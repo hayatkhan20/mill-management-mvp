@@ -102,6 +102,29 @@ app.post('/api/customers', (req, res) => {
   }
 });
 
+// Add this block in backend/src/server.js immediately AFTER the existing
+// app.post('/api/customers', ...) route and BEFORE app.get('/api/customers/:id', ...)
+
+app.post('/api/customers/:id/update', (req, res) => {
+  try {
+    const id = asNumber(req.params.id, 'Customer', { min: 1, allowZero: false });
+    const existing = db.prepare('SELECT id FROM customers WHERE id=?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Customer not found' });
+
+    const name = requiredText(req.body.name, 'Customer name');
+    const phone = String(req.body.phone ?? '').trim();
+    const address = String(req.body.address ?? '').trim();
+
+    db.prepare('UPDATE customers SET name=?, phone=?, address=? WHERE id=?')
+      .run(name, phone, address, id);
+
+    res.json(db.prepare('SELECT * FROM customers WHERE id=?').get(id));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+
 app.get('/api/customers/:id', (req, res) => {
   const id = Number(req.params.id);
   const customer = db.prepare('SELECT * FROM customers WHERE id=?').get(id);
