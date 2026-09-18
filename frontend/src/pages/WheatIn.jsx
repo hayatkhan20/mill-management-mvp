@@ -24,13 +24,12 @@ export default function WheatIn(){
   <div>
    <Card><h3>New Wheat Purchase</h3><ErrorBox error={error}/><SuccessBox text={success}/><form onSubmit={submit} className="form-grid">
     <label>Date (DD/MM/YYYY)<DateField required value={form.date} onChange={date=>setForm({...form,date})}/></label>
-    <div>
-     <span className="field-label">Source</span>
-     <div className="customer-picker-row">
+    <label>Source
+     <div className="source-inline-row">
       <select required value={form.source_id} onChange={e=>setForm({...form,source_id:e.target.value})}><option value="">Select source</option>{sources.map(s=><option key={s.id} value={s.id}>{s.name} — {s.source_type}</option>)}</select>
       <button type="button" className="secondary add-customer-btn" onClick={()=>{setNewSource(blankSource());setShowAddSource(true)}}><UserPlus size={17}/> Add Source</button>
      </div>
-    </div>
+    </label>
     <label>No. of Bags / Bardana<input type="number" min="0" step="1" value={form.bags} onChange={e=>setForm({...form,bags:e.target.value})}/></label>
     <label>Total Wheat (KG)<input required type="number" min="0.01" step="0.01" value={form.total_kg} onChange={e=>setForm({...form,total_kg:e.target.value})}/></label>
     <label>Wheat Rate per KG<input required type="number" min="0" step="0.01" value={form.rate_per_kg} onChange={e=>setForm({...form,rate_per_kg:e.target.value})}/></label>
