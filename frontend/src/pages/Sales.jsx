@@ -3,6 +3,7 @@ import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { money, num, today } from '../utils';
 import { Plus, Printer, Search, Trash2, UserPlus } from 'lucide-react';
+import DateField, { formatDateDMY } from '../components/DateField';
 
 const blankItem=()=>({product_id:'',bag_size:'20',bags:'',total_kg:'',rate:''});
 const blankCustomer=()=>({name:'',phone:'',address:''});
@@ -60,7 +61,7 @@ export default function Sales(){
  <Card><ErrorBox error={error}/><SuccessBox text={success}/><form onSubmit={submit}>
  <div className="form-grid sales-head">
    <label>Bill No.<input value={bill} readOnly/></label>
-   <label>Date<input type="date" value={date} onChange={e=>setDate(e.target.value)}/></label>
+   <label>Date (DD/MM/YYYY)<DateField required value={date} onChange={setDate}/></label>
    <div className="span-2 customer-field">
      <span className="field-label">Customer</span>
      <div className="customer-picker-row">
@@ -95,7 +96,7 @@ export default function Sales(){
  <div className="sale-summary"><label>Remarks<input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Optional"/></label><div><span>Total Bill</span><strong>{money(total)}</strong></div><label>Amount Received<input type="number" min="0" max={total||undefined} step="0.01" value={received} onChange={e=>setReceived(e.target.value)}/></label><div><span>Pending on this bill</span><strong>{money(Math.max(0,total-Number(received||0)))}</strong></div></div>
  <div className="actions"><button className="primary">Save Sale</button></div></form></Card>
 
- <Card><h3>Recent Bills</h3>{sales.length?<div className="table-wrap"><table><thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Total</th><th>Received</th><th>Pending</th><th></th></tr></thead><tbody>{sales.slice(0,20).map(s=><tr key={s.id}><td>{s.bill_no}</td><td>{s.date}</td><td>{s.customer_name}</td><td>{money(s.total_amount)}</td><td>{money(s.received_amount)}</td><td>{money(s.pending_amount)}</td><td><button className="link-btn" onClick={()=>openSale(s.id)}><Printer size={15}/> View / Print</button></td></tr>)}</tbody></table></div>:<Empty/>}</Card>
+ <Card><h3>Recent Bills</h3>{sales.length?<div className="table-wrap"><table><thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Total</th><th>Received</th><th>Pending</th><th></th></tr></thead><tbody>{sales.slice(0,20).map(s=><tr key={s.id}><td>{s.bill_no}</td><td>{formatDateDMY(s.date)}</td><td>{s.customer_name}</td><td>{money(s.total_amount)}</td><td>{money(s.received_amount)}</td><td>{money(s.pending_amount)}</td><td><button className="link-btn" onClick={()=>openSale(s.id)}><Printer size={15}/> View / Print</button></td></tr>)}</tbody></table></div>:<Empty/>}</Card>
  {showAddCustomer&&<AddCustomerModal customer={newCustomer} setCustomer={setNewCustomer} onClose={()=>setShowAddCustomer(false)} onSave={addCustomer}/>} 
  {printSale&&<Invoice sale={printSale} onClose={()=>setPrintSale(null)}/>}</>;
 }
@@ -112,4 +113,4 @@ function AddCustomerModal({customer,setCustomer,onClose,onSave}){
  </div></div>;
 }
 
-function Invoice({sale,onClose}){return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="primary" onClick={()=>window.print()}><Printer size={16}/> Print Bill</button></div><div className="invoice" id="invoice"><div className="invoice-head"><div><h2>FLOUR MILL</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{sale.date}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Bag Size</th><th>Bags</th><th>KG</th><th>Rate/Bag</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{num(i.bag_size)} KG</td><td>{num(i.bags)}</td><td>{num(i.total_kg)}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>)}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending on this bill</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>}
+function Invoice({sale,onClose}){return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="primary" onClick={()=>window.print()}><Printer size={16}/> Print Bill</button></div><div className="invoice" id="invoice"><div className="invoice-head"><div><h2>FLOUR MILL</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{formatDateDMY(sale.date)}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Bag Size</th><th>Bags</th><th>KG</th><th>Rate/Bag</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=><tr key={i.id}><td>{i.product_name}</td><td>{num(i.bag_size)} KG</td><td>{num(i.bags)}</td><td>{num(i.total_kg)}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>)}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending on this bill</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>}

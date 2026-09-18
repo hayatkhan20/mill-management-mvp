@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { money, num, today } from '../utils';
+import DateField, { formatDateDMY } from '../components/DateField';
 
 const balanceText=(value)=>Number(value)<0?`Advance ${money(Math.abs(value))}`:`${money(value)}`;
 
@@ -43,9 +44,9 @@ export default function Customers(){
 
    <div className="quantities">{selected.quantities.map(q=><span key={q.product}>{q.product}: <strong>{num(q.kg)} KG</strong></span>)}</div>
 
-   <Card><h3>Receive Payment / Advance</h3><form className="form-inline" onSubmit={pay}><input type="date" value={payment.date} onChange={e=>setPayment({...payment,date:e.target.value})}/><input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/><input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/><button className="primary">Receive</button></form><small>If payment is greater than pending, the extra amount becomes customer advance.</small></Card>
+   <Card><h3>Receive Payment / Advance</h3><form className="form-inline" onSubmit={pay}><DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/><input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/><input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/><button className="primary">Receive</button></form><small>If payment is greater than pending, the extra amount becomes customer advance.</small></Card>
 
-   <Card><h3>Ledger</h3>{selected.ledger.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>Purchase</th><th>Payment</th><th>Balance</th></tr></thead><tbody>{selected.ledger.map((e,i)=><tr key={`${e.type}-${e.id}-${i}`}><td>{e.date}</td><td>{e.reference}</td><td>{e.type==='sale'?money(e.debit):'—'}</td><td>{money(e.credit)}</td><td className={e.balance<0?'advance':''}>{e.balance<0?`Advance ${money(Math.abs(e.balance))}`:money(e.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
+   <Card><h3>Ledger</h3>{selected.ledger.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>Purchase</th><th>Payment</th><th>Balance</th></tr></thead><tbody>{selected.ledger.map((e,i)=><tr key={`${e.type}-${e.id}-${i}`}><td>{formatDateDMY(e.date)}</td><td>{e.reference}</td><td>{e.type==='sale'?money(e.debit):'—'}</td><td>{money(e.credit)}</td><td className={e.balance<0?'advance':''}>{e.balance<0?`Advance ${money(Math.abs(e.balance))}`:money(e.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
   </div></div>}
  </>;
 }

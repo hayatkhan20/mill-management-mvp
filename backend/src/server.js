@@ -65,8 +65,8 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.get('/api/products', (req, res) => {
   const includeInactive = String(req.query.all || '') === '1';
   const sql = includeInactive
-    ? 'SELECT * FROM products ORDER BY CASE WHEN name="Wheat" THEN 0 ELSE 1 END, name COLLATE NOCASE'
-    : 'SELECT * FROM products WHERE is_active=1 ORDER BY CASE WHEN name="Wheat" THEN 0 ELSE 1 END, name COLLATE NOCASE';
+    ? `SELECT * FROM products ORDER BY CASE WHEN name='Wheat' THEN 0 ELSE 1 END, name COLLATE NOCASE`
+    : `SELECT * FROM products WHERE is_active=1 ORDER BY CASE WHEN name='Wheat' THEN 0 ELSE 1 END, name COLLATE NOCASE`;
   res.json(db.prepare(sql).all());
 });
 
@@ -638,6 +638,57 @@ app.get('/api/stock/monthly', (req, res) => {
     GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all(start, start, endDate, start, endDate, endDate);
   res.json({ month, start, end: endDate, rows });
+});
+
+
+
+app.get('/api/appendix/daily', (req, res) => {
+  const date = String(req.query.date || today());
+
+  const wheatUsed = round2(db.prepare(`
+    SELECT COALESCE(SUM(wheat_consumed),0) AS total
+    FROM production
+    WHERE date=?
+  `).get(date).total);
+
+  const wheat = getProduct('Wheat');
+  const wheatClosing = wheat ? round2(db.prepare(`
+    SELECT COALESCE(SUM(qty_kg),0) AS total
+    FROM stock_movements
+    WHERE product_id=? AND date<=?
+  `).get(wheat.id, date).total) : 0;
+
+  const rows = db.prepare(`
+    SELECT p.id, p.name,
+      ROUND(COALESCE((
+        SELECT SUM(pi.qty_kg)
+        FROM production_items pi
+        JOIN production pr ON pr.id=pi.production_id
+        WHERE pr.date=? AND pi.product_id=p.id
+      ),0),2) AS produced_kg,
+      ROUND(COALESCE((
+        SELECT SUM(sm.qty_kg)
+        FROM stock_movements sm
+        WHERE sm.product_id=p.id AND sm.date<=?
+      ),0),2) AS closing_kg
+    FROM products p
+    WHERE p.is_active=1 AND p.name<>'Wheat'
+    ORDER BY p.name COLLATE NOCASE
+  `).all(date, date).map((row) => ({
+    ...row,
+    percentage: wheatUsed > 0 ? round2((Number(row.produced_kg) / wheatUsed) * 100) : 0,
+  }));
+
+  const totalProduced = round2(rows.reduce((sum, row) => sum + Number(row.produced_kg || 0), 0));
+
+  res.json({
+    date,
+    wheat_used_kg: wheatUsed,
+    wheat_closing_kg: wheatClosing,
+    total_produced_kg: totalProduced,
+    total_yield_percent: wheatUsed > 0 ? round2((totalProduced / wheatUsed) * 100) : 0,
+    rows,
+  });
 });
 
 app.get('/api/reports/outstanding', (_req, res) => {

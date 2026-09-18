@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Card, ErrorBox, PageHeader } from '../components/Common';
 import { monthNow, num, today } from '../utils';
+import DateField from '../components/DateField';
 
 export default function Stock(){
  const [date,setDate]=useState(today()),[month,setMonth]=useState(monthNow()),[daily,setDaily]=useState(null),[monthly,setMonthly]=useState(null),[bardana,setBardana]=useState(null),[error,setError]=useState('');
@@ -22,7 +23,7 @@ export default function Stock(){
   </div>
 
   <div className="two-col" style={{marginTop:18}}>
-   <Card><div className="section-title"><h3>Daily Stock</h3><input type="date" value={date} onChange={e=>setDate(e.target.value)}/></div>{table(daily?.rows)}</Card>
+   <Card><div className="section-title"><h3>Daily Stock</h3><DateField value={date} onChange={setDate}/></div>{table(daily?.rows)}</Card>
    <Card><div className="section-title"><h3>Monthly Product Stock</h3><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>{table(monthly?.rows)}</Card>
   </div>
  </>;

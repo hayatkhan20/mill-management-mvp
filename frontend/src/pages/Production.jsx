@@ -3,6 +3,7 @@ import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { num, today } from '../utils';
 import { Plus, Trash2 } from 'lucide-react';
+import DateField, { formatDateDMY } from '../components/DateField';
 
 const blankItem=()=>({product_id:'',qty_kg:''});
 const initial=()=>({date:today(),wheat_consumed:'',remarks:'',items:[blankItem()]});
@@ -35,7 +36,7 @@ export default function Production(){
         <h3>New Production Entry</h3><ErrorBox error={error}/><SuccessBox text={success}/>
         <form onSubmit={submit}>
           <div className="form-grid">
-            <label>Date<input type="date" value={form.date} onChange={e=>setForm({...form,date:e.target.value})}/></label>
+            <label>Date (DD/MM/YYYY)<DateField required value={form.date} onChange={date=>setForm({...form,date})}/></label>
             <label>Wheat Used / Ground (KG)<input type="number" min="0" step="0.01" value={form.wheat_consumed} onChange={e=>setForm({...form,wheat_consumed:e.target.value})}/></label>
           </div>
 
@@ -60,7 +61,7 @@ export default function Production(){
       <Card>
         <h3>Recent Production</h3>
         {rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Wheat Used</th><th>Produced</th></tr></thead><tbody>
-          {rows.slice(0,15).map(r=><tr key={r.id}><td>{r.date}</td><td>{num(r.wheat_consumed)} KG</td><td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong>{num(i.qty_kg)} KG</strong></div>):'—'}</td></tr>)}
+          {rows.slice(0,15).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td>{num(r.wheat_consumed)} KG</td><td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong>{num(i.qty_kg)} KG</strong></div>):'—'}</td></tr>)}
         </tbody></table></div>:<Empty/>}
       </Card>
     </div>

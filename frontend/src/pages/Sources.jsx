@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { money, num, today } from '../utils';
+import DateField, { formatDateDMY } from '../components/DateField';
 
 const blankSource=()=>({name:'',source_type:'Private',phone:'',address:''});
 const balanceLabel=(value)=>{
@@ -67,14 +68,14 @@ export default function Sources(){
    <div className="quantities"><span>Wheat: <strong>{num(selected.wheat_kg)} KG</strong></span><span>Bardana received: <strong>{num(selected.bardana_bags)} Bags</strong></span></div>
 
    <Card><h3>Pay Source</h3><form className="form-inline" onSubmit={pay}>
-    <input type="date" value={payment.date} onChange={e=>setPayment({...payment,date:e.target.value})}/>
+    <DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/>
     <input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/>
     <input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/>
     <button className="primary">Pay</button>
    </form><small>Payments can exceed the current payable amount; the extra amount becomes an advance with the source.</small></Card>
 
    <Card><h3>Ledger</h3>{selected.ledger.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>Purchase</th><th>Payment</th><th>Balance</th></tr></thead><tbody>
-    {selected.ledger.map((e,i)=><tr key={`${e.type}-${e.id}-${i}`}><td>{e.date}</td><td>{e.reference}</td><td>{Number(e.debit)>0?money(e.debit):'—'}</td><td>{Number(e.credit)>0?money(e.credit):'—'}</td><td>{balanceLabel(e.balance)}</td></tr>)}
+    {selected.ledger.map((e,i)=><tr key={`${e.type}-${e.id}-${i}`}><td>{formatDateDMY(e.date)}</td><td>{e.reference}</td><td>{Number(e.debit)>0?money(e.debit):'—'}</td><td>{Number(e.credit)>0?money(e.credit):'—'}</td><td>{balanceLabel(e.balance)}</td></tr>)}
    </tbody></table></div>:<Empty/>}</Card>
   </div></div>}
  </>;
