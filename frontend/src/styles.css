@@ -5,3 +5,12 @@
 .date-field-wrap{position:relative;display:flex;align-items:center}.date-field-wrap>input:first-child{padding-right:44px}.date-picker-btn{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:34px;height:34px;border:0;border-radius:7px;background:#edf3f0;color:#254d3b;display:grid;place-items:center;cursor:pointer}.date-picker-btn:hover{background:#e1ebe6}.date-native-picker{position:absolute;width:1px!important;height:1px!important;opacity:0;pointer-events:none;right:8px;bottom:0;padding:0!important;border:0!important}
 
 .section-tabs{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}.section-tabs button{min-width:140px}
+
+.section-card-below{margin-top:18px}
+.production-products-section{margin-top:18px;padding-top:14px;border-top:1px solid #edf1ef}
+.production-products-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.add-customer-modal{background:#fff;width:min(620px,calc(100vw - 40px));max-height:90vh;overflow:auto;border-radius:14px;padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.18)}
+.modal-title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px}
+.modal-title-row h2{margin:0 0 4px}.modal-title-row p{margin:0;color:#718078;font-size:12px}
+@media(max-width:1000px){.production-products-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.production-products-grid{grid-template-columns:1fr}.add-customer-modal{width:calc(100vw - 24px);padding:16px}}
