@@ -9,12 +9,14 @@ app.use(cors());
 app.use(express.json({ limit: '1mb' }));
 
 const round2 = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 10);
+};
 const asNumber = (value, field, { min = 0, allowZero = true } = {}) => {
   const n = Number(value);
-  if (!Number.isFinite(n) || n < min || (!allowZero && n === 0)) {
-    throw new Error(`${field} is invalid`);
-  }
+  if (!Number.isFinite(n) || n < min || (!allowZero && n === 0)) throw new Error(`${field} is invalid`);
   return n;
 };
 const requiredText = (value, field) => {
@@ -24,11 +26,9 @@ const requiredText = (value, field) => {
 };
 
 const getProduct = (name) => db.prepare('SELECT * FROM products WHERE name = ?').get(name);
-const currentProductStock = (productId) => {
-  const row = db.prepare('SELECT COALESCE(SUM(qty_kg), 0) AS qty FROM stock_movements WHERE product_id = ?').get(productId);
-  return round2(row.qty);
-};
-
+const currentProductStock = (productId) => round2(
+  db.prepare('SELECT COALESCE(SUM(qty_kg), 0) AS qty FROM stock_movements WHERE product_id = ?').get(productId).qty
+);
 const customerBalance = (customerId) => {
   const sale = db.prepare('SELECT COALESCE(SUM(pending_amount), 0) AS total FROM sales WHERE customer_id = ?').get(customerId).total;
   const payment = db.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE customer_id = ?').get(customerId).total;
@@ -37,8 +37,44 @@ const customerBalance = (customerId) => {
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/api/products', (_req, res) => {
-  res.json(db.prepare('SELECT * FROM products ORDER BY id').all());
+app.get('/api/products', (req, res) => {
+  const includeInactive = String(req.query.all || '') === '1';
+  const sql = includeInactive
+    ? 'SELECT * FROM products ORDER BY CASE WHEN name="Wheat" THEN 0 ELSE 1 END, name COLLATE NOCASE'
+    : 'SELECT * FROM products WHERE is_active=1 ORDER BY CASE WHEN name="Wheat" THEN 0 ELSE 1 END, name COLLATE NOCASE';
+  res.json(db.prepare(sql).all());
+});
+
+app.post('/api/products', (req, res) => {
+  try {
+    const name = requiredText(req.body.name, 'Product name');
+    if (name.toLowerCase() === 'wheat') throw new Error('Wheat is a system stock item and already exists');
+    const existing = db.prepare('SELECT * FROM products WHERE LOWER(name)=LOWER(?)').get(name);
+    if (existing) {
+      if (!existing.is_active) {
+        db.prepare('UPDATE products SET is_active=1 WHERE id=?').run(existing.id);
+        return res.json(db.prepare('SELECT * FROM products WHERE id=?').get(existing.id));
+      }
+      throw new Error('Product already exists');
+    }
+    const result = db.prepare('INSERT INTO products (name,is_active) VALUES (?,1)').run(name);
+    res.status(201).json(db.prepare('SELECT * FROM products WHERE id=?').get(result.lastInsertRowid));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/products/:id/toggle', (req, res) => {
+  try {
+    const id = asNumber(req.params.id, 'Product', { min: 1, allowZero: false });
+    const product = db.prepare('SELECT * FROM products WHERE id=?').get(id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (product.name === 'Wheat') throw new Error('Wheat cannot be deactivated');
+    db.prepare('UPDATE products SET is_active=? WHERE id=?').run(product.is_active ? 0 : 1, id);
+    res.json(db.prepare('SELECT * FROM products WHERE id=?').get(id));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 app.get('/api/dashboard', (_req, res) => {
@@ -47,19 +83,17 @@ app.get('/api/dashboard', (_req, res) => {
     SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
     FROM products p
     LEFT JOIN stock_movements sm ON sm.product_id = p.id
+    WHERE p.is_active=1
     GROUP BY p.id, p.name
-    ORDER BY p.id
+    ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all();
 
   const wheatToday = db.prepare('SELECT COALESCE(SUM(total_kg),0) AS kg FROM wheat_in WHERE date = ?').get(date).kg;
   const salesToday = db.prepare('SELECT COALESCE(SUM(total_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedOnSales = db.prepare('SELECT COALESCE(SUM(received_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedPayments = db.prepare('SELECT COALESCE(SUM(amount),0) AS amount FROM payments WHERE date = ?').get(date).amount;
-  const pending = db.prepare(`
-    SELECT
-      COALESCE((SELECT SUM(pending_amount) FROM sales),0) -
-      COALESCE((SELECT SUM(amount) FROM payments),0) AS amount
-  `).get().amount;
+  const customerIds = db.prepare('SELECT id FROM customers').all();
+  const pending = customerIds.reduce((sum, c) => sum + Math.max(0, customerBalance(c.id)), 0);
   const recentSales = db.prepare(`
     SELECT s.id, s.bill_no, s.date, s.total_amount, s.received_amount, s.pending_amount, c.name AS customer_name
     FROM sales s JOIN customers c ON c.id=s.customer_id
@@ -73,7 +107,8 @@ app.get('/api/dashboard', (_req, res) => {
     sales_today: round2(salesToday),
     received_today: round2(receivedOnSales + receivedPayments),
     total_pending: round2(pending),
-    recent_sales: recentSales
+    active_products: products.filter((p) => p.name !== 'Wheat').length,
+    recent_sales: recentSales,
   });
 });
 
@@ -102,28 +137,20 @@ app.post('/api/customers', (req, res) => {
   }
 });
 
-// Add this block in backend/src/server.js immediately AFTER the existing
-// app.post('/api/customers', ...) route and BEFORE app.get('/api/customers/:id', ...)
-
 app.post('/api/customers/:id/update', (req, res) => {
   try {
     const id = asNumber(req.params.id, 'Customer', { min: 1, allowZero: false });
     const existing = db.prepare('SELECT id FROM customers WHERE id=?').get(id);
     if (!existing) return res.status(404).json({ error: 'Customer not found' });
-
     const name = requiredText(req.body.name, 'Customer name');
     const phone = String(req.body.phone ?? '').trim();
     const address = String(req.body.address ?? '').trim();
-
-    db.prepare('UPDATE customers SET name=?, phone=?, address=? WHERE id=?')
-      .run(name, phone, address, id);
-
+    db.prepare('UPDATE customers SET name=?, phone=?, address=? WHERE id=?').run(name, phone, address, id);
     res.json(db.prepare('SELECT * FROM customers WHERE id=?').get(id));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
-
 
 app.get('/api/customers/:id', (req, res) => {
   const id = Number(req.params.id);
@@ -131,9 +158,8 @@ app.get('/api/customers/:id', (req, res) => {
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
 
   const totals = db.prepare(`
-    SELECT
-      ROUND(COALESCE(SUM(total_amount),0),2) AS total_purchased,
-      ROUND(COALESCE(SUM(received_amount),0),2) AS paid_on_bills
+    SELECT ROUND(COALESCE(SUM(total_amount),0),2) AS total_purchased,
+           ROUND(COALESCE(SUM(received_amount),0),2) AS paid_on_bills
     FROM sales WHERE customer_id=?
   `).get(id);
   const laterPayments = db.prepare('SELECT ROUND(COALESCE(SUM(amount),0),2) AS total FROM payments WHERE customer_id=?').get(id).total;
@@ -171,7 +197,7 @@ app.get('/api/customers/:id', (req, res) => {
     total_paid: round2(totals.paid_on_bills + laterPayments),
     balance: customerBalance(id),
     quantities,
-    ledger
+    ledger,
   });
 });
 
@@ -181,8 +207,6 @@ app.post('/api/payments', (req, res) => {
     const customer = db.prepare('SELECT id FROM customers WHERE id=?').get(customerId);
     if (!customer) throw new Error('Customer not found');
     const amount = asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false });
-    const balance = customerBalance(customerId);
-    if (amount > balance + 0.001) throw new Error(`Payment cannot exceed current pending balance (${balance.toFixed(2)})`);
     const date = req.body.date || today();
     const result = db.prepare('INSERT INTO payments (customer_id,date,amount,note) VALUES (?,?,?,?)')
       .run(customerId, date, round2(amount), String(req.body.note ?? '').trim());
@@ -225,35 +249,59 @@ app.post('/api/wheat-in', (req, res) => {
 
 app.get('/api/production', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
-  res.json(db.prepare('SELECT * FROM production ORDER BY date DESC, id DESC LIMIT ?').all(limit));
+  const rows = db.prepare('SELECT id,date,wheat_consumed,remarks,created_at FROM production ORDER BY date DESC, id DESC LIMIT ?').all(limit);
+  const getItems = db.prepare(`
+    SELECT pi.id, pi.product_id, p.name AS product_name, pi.qty_kg
+    FROM production_items pi JOIN products p ON p.id=pi.product_id
+    WHERE pi.production_id=? ORDER BY p.name COLLATE NOCASE
+  `);
+  res.json(rows.map((row) => ({ ...row, items: getItems.all(row.id) })));
 });
 
 app.post('/api/production', (req, res) => {
   try {
     const date = req.body.date || today();
     const wheatConsumed = asNumber(req.body.wheat_consumed ?? 0, 'Wheat consumed');
-    const flourProduced = asNumber(req.body.flour_produced ?? 0, 'Flour produced');
-    const sujiProduced = asNumber(req.body.suji_produced ?? 0, 'Suji produced');
-    if (wheatConsumed === 0 && flourProduced === 0 && sujiProduced === 0) throw new Error('Enter at least one production quantity');
+    const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
+    const normalizedItems = rawItems
+      .map((item, index) => {
+        const productId = asNumber(item.product_id, `Product ${index + 1}`, { min: 1, allowZero: false });
+        const qtyKg = asNumber(item.qty_kg ?? 0, `Product ${index + 1} KG`);
+        if (qtyKg === 0) return null;
+        const product = db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
+        if (!product || product.name === 'Wheat') throw new Error(`Product ${index + 1} is invalid`);
+        return { product, productId, qtyKg: round2(qtyKg) };
+      })
+      .filter(Boolean);
+
+    if (wheatConsumed === 0 && normalizedItems.length === 0) throw new Error('Enter wheat consumed or at least one produced product');
+    const seen = new Set();
+    for (const item of normalizedItems) {
+      if (seen.has(item.productId)) throw new Error(`${item.product.name} is entered more than once`);
+      seen.add(item.productId);
+    }
 
     const wheat = getProduct('Wheat');
-    const flour = getProduct('Flour');
-    const suji = getProduct('Suji');
     if (wheatConsumed > currentProductStock(wheat.id) + 0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
     const remarks = String(req.body.remarks ?? '').trim();
 
     const tx = db.transaction(() => {
       const r = db.prepare(`INSERT INTO production (date,wheat_consumed,flour_produced,suji_produced,remarks)
-        VALUES (?,?,?,?,?)`).run(date, wheatConsumed, flourProduced, sujiProduced, remarks);
+        VALUES (?,?,0,0,?)`).run(date, wheatConsumed, remarks);
+      const productionId = r.lastInsertRowid;
+      const insertItem = db.prepare('INSERT INTO production_items (production_id,product_id,qty_kg) VALUES (?,?,?)');
       const insertMovement = db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
         VALUES (?,?,?,?,?,?,?)`);
-      if (wheatConsumed) insertMovement.run(date, wheat.id, -wheatConsumed, 'OUT', 'production', r.lastInsertRowid, 'Wheat consumed in production');
-      if (flourProduced) insertMovement.run(date, flour.id, flourProduced, 'IN', 'production', r.lastInsertRowid, 'Flour produced');
-      if (sujiProduced) insertMovement.run(date, suji.id, sujiProduced, 'IN', 'production', r.lastInsertRowid, 'Suji produced');
-      return r.lastInsertRowid;
+      if (wheatConsumed) insertMovement.run(date, wheat.id, -wheatConsumed, 'OUT', 'production', productionId, 'Wheat used / ground');
+      for (const item of normalizedItems) {
+        insertItem.run(productionId, item.productId, item.qtyKg);
+        insertMovement.run(date, item.productId, item.qtyKg, 'IN', 'production', productionId, `${item.product.name} produced`);
+      }
+      return productionId;
     });
+
     const id = tx();
-    res.status(201).json(db.prepare('SELECT * FROM production WHERE id=?').get(id));
+    res.status(201).json({ id });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -261,8 +309,7 @@ app.post('/api/production', (req, res) => {
 
 const nextBillNo = () => {
   const row = db.prepare('SELECT id FROM sales ORDER BY id DESC LIMIT 1').get();
-  const n = (row?.id || 0) + 1;
-  return `B-${String(n).padStart(5, '0')}`;
+  return `B-${String((row?.id || 0) + 1).padStart(5, '0')}`;
 };
 
 app.get('/api/sales/next-bill', (_req, res) => res.json({ bill_no: nextBillNo() }));
@@ -281,11 +328,7 @@ app.get('/api/sales/:id', (req, res) => {
     FROM sales s JOIN customers c ON c.id=s.customer_id WHERE s.id=?`).get(Number(req.params.id));
   if (!sale) return res.status(404).json({ error: 'Sale not found' });
   const items = db.prepare(`SELECT si.*, p.name AS product_name FROM sale_items si JOIN products p ON p.id=si.product_id WHERE si.sale_id=?`).all(sale.id);
-  const prior = db.prepare(`
-    SELECT COALESCE(SUM(pending_amount),0) - COALESCE((SELECT SUM(amount) FROM payments WHERE customer_id=? AND (date < ? OR (date = ? AND created_at < ?))),0) AS balance
-    FROM sales WHERE customer_id=? AND id < ?
-  `).get(sale.customer_id, sale.date, sale.date, sale.created_at, sale.customer_id, sale.id)?.balance || 0;
-  res.json({ ...sale, items, previous_balance_approx: round2(prior) });
+  res.json({ ...sale, items });
 });
 
 app.post('/api/sales', (req, res) => {
@@ -298,22 +341,20 @@ app.post('/api/sales', (req, res) => {
 
     const normalizedItems = req.body.items.map((item, index) => {
       const productId = asNumber(item.product_id, `Item ${index + 1} product`, { min: 1, allowZero: false });
-      const product = db.prepare('SELECT * FROM products WHERE id=?').get(productId);
-      if (!product || product.name === 'Wheat') throw new Error(`Item ${index + 1}: only finished products can be sold`);
-      const bagSize = asNumber(item.bag_size ?? 0, `Item ${index + 1} bag size`);
-      const bags = asNumber(item.bags ?? 0, `Item ${index + 1} bags`);
-      let totalKg = Number(item.total_kg);
-      if (!Number.isFinite(totalKg) || totalKg <= 0) totalKg = bagSize > 0 && bags > 0 ? bagSize * bags : 0;
-      totalKg = asNumber(totalKg, `Item ${index + 1} total KG`, { min: 0, allowZero: false });
-      const rate = asNumber(item.rate, `Item ${index + 1} rate`);
-      const amount = round2(totalKg * rate);
-      return { product, productId, bagSize, bags, totalKg: round2(totalKg), rate: round2(rate), amount };
+      const product = db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
+      if (!product || product.name === 'Wheat') throw new Error(`Item ${index + 1}: select an active finished product`);
+      const bagSize = asNumber(item.bag_size, `Item ${index + 1} bag size`, { min: 20, allowZero: false });
+      if (![20, 40].includes(bagSize)) throw new Error(`Item ${index + 1}: bag size must be 20 KG or 40 KG`);
+      const bags = asNumber(item.bags, `Item ${index + 1} bags`, { min: 1, allowZero: false });
+      if (!Number.isInteger(bags)) throw new Error(`Item ${index + 1}: number of bags must be a whole number`);
+      const totalKg = round2(bagSize * bags);
+      const rate = round2(asNumber(item.rate, `Item ${index + 1} rate per bag`, { min: 0, allowZero: false }));
+      const amount = round2(bags * rate);
+      return { product, productId, bagSize, bags, totalKg, rate, amount };
     });
 
     const requestedByProduct = new Map();
-    for (const item of normalizedItems) {
-      requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) || 0) + item.totalKg);
-    }
+    for (const item of normalizedItems) requestedByProduct.set(item.productId, (requestedByProduct.get(item.productId) || 0) + item.totalKg);
     for (const [productId, qty] of requestedByProduct) {
       const stock = currentProductStock(productId);
       if (qty > stock + 0.001) {
@@ -324,7 +365,7 @@ app.post('/api/sales', (req, res) => {
 
     const totalAmount = round2(normalizedItems.reduce((sum, x) => sum + x.amount, 0));
     const received = round2(asNumber(req.body.received_amount ?? 0, 'Amount received'));
-    if (received > totalAmount + 0.001) throw new Error('Amount received cannot exceed this bill total. Use Receive Payment for old pending balance.');
+    if (received > totalAmount + 0.001) throw new Error('Amount received on this bill cannot exceed the bill total. Record extra money as customer advance payment.');
     const pending = round2(totalAmount - received);
     const billNo = String(req.body.bill_no || nextBillNo()).trim();
     const remarks = String(req.body.remarks ?? '').trim();
@@ -344,8 +385,14 @@ app.post('/api/sales', (req, res) => {
     });
 
     const saleId = tx();
-    const newBalance = customerBalance(customerId);
-    res.status(201).json({ id: saleId, bill_no: billNo, total_amount: totalAmount, received_amount: received, pending_amount: pending, customer_balance: newBalance });
+    res.status(201).json({
+      id: saleId,
+      bill_no: billNo,
+      total_amount: totalAmount,
+      received_amount: received,
+      pending_amount: pending,
+      customer_balance: customerBalance(customerId),
+    });
   } catch (e) {
     const status = String(e.message).includes('UNIQUE') ? 409 : 400;
     res.status(status).json({ error: e.message });
@@ -356,7 +403,8 @@ app.get('/api/stock/current', (_req, res) => {
   const rows = db.prepare(`
     SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
     FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    GROUP BY p.id,p.name ORDER BY p.id
+    WHERE p.is_active=1
+    GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all();
   res.json(rows);
 });
@@ -370,7 +418,8 @@ app.get('/api/stock/daily', (req, res) => {
       ROUND(ABS(COALESCE(SUM(CASE WHEN sm.date = ? AND sm.qty_kg < 0 THEN sm.qty_kg ELSE 0 END),0)),2) AS out_qty,
       ROUND(COALESCE(SUM(CASE WHEN sm.date <= ? THEN sm.qty_kg ELSE 0 END),0),2) AS closing
     FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    GROUP BY p.id,p.name ORDER BY p.id
+    WHERE p.is_active=1
+    GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all(date, date, date, date);
   res.json({ date, rows });
 });
@@ -388,7 +437,8 @@ app.get('/api/stock/monthly', (req, res) => {
       ROUND(ABS(COALESCE(SUM(CASE WHEN sm.date >= ? AND sm.date <= ? AND sm.qty_kg < 0 THEN sm.qty_kg ELSE 0 END),0)),2) AS out_qty,
       ROUND(COALESCE(SUM(CASE WHEN sm.date <= ? THEN sm.qty_kg ELSE 0 END),0),2) AS closing
     FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    GROUP BY p.id,p.name ORDER BY p.id
+    WHERE p.is_active=1
+    GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all(start, start, endDate, start, endDate, endDate);
   res.json({ month, start, end: endDate, rows });
 });

@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, Factory, LayoutDashboard, ReceiptText, ShoppingBasket, Users, Wheat } from 'lucide-react';
+import { BarChart3, Boxes, Factory, LayoutDashboard, PackagePlus, ReceiptText, ShoppingBasket, Users, Wheat } from 'lucide-react';
 
 const items = [
   ['dashboard', 'Dashboard', LayoutDashboard],
@@ -6,6 +6,7 @@ const items = [
   ['production', 'Production', Factory],
   ['sales', 'Sales / Billing', ReceiptText],
   ['customers', 'Customers', Users],
+  ['products', 'Products', PackagePlus],
   ['stock', 'Stock', Boxes],
   ['reports', 'Reports', BarChart3],
 ];
