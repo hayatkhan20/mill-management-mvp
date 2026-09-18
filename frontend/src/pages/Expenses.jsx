@@ -5,7 +5,7 @@ import { money, monthNow, today } from '../utils';
 import DateField, { formatDateDMY } from '../components/DateField';
 
 const blank=()=>({date:today(),category:'',amount:'',note:''});
-const commonCategories=['Electricity Bill','Meal','Conveyance','Employee Salaries','Maintenance','Other'];
+const recurringCategories=['Electricity Bill','Meal','Employee Salaries','Machinery Cost'];
 
 export default function Expenses(){
  const [month,setMonth]=useState(monthNow()),[data,setData]=useState(null),[form,setForm]=useState(blank()),[editingId,setEditingId]=useState(null),[error,setError]=useState(''),[success,setSuccess]=useState('');
@@ -45,8 +45,9 @@ export default function Expenses(){
     <form className="form-grid" onSubmit={submit}>
      <label>Date (DD/MM/YYYY)<DateField required value={form.date} onChange={date=>setForm({...form,date})}/></label>
      <label>Category
-      <input required list="expense-categories" value={form.category} onChange={e=>setForm({...form,category:e.target.value})} placeholder="e.g. Electricity Bill"/>
-      <datalist id="expense-categories">{commonCategories.map(x=><option value={x} key={x}/>)}</datalist>
+      <input required list="expense-categories" value={form.category} onChange={e=>setForm({...form,category:e.target.value})} placeholder="Select or type a one-time category"/>
+      <datalist id="expense-categories">{recurringCategories.map(x=><option value={x} key={x}/>)}</datalist>
+      <small>Common repeatable categories are suggested; any other category can be typed once.</small>
      </label>
      <label>Amount<input required type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></label>
      <label>Note<input value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optional"/></label>
