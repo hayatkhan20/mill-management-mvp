@@ -617,6 +617,58 @@ app.post('/api/sales', (req, res) => {
   }
 });
 
+app.get('/api/consumption', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  res.json(db.prepare(`
+    SELECT pc.*, p.name AS product_name
+    FROM product_consumption pc
+    JOIN products p ON p.id=pc.product_id
+    ORDER BY pc.date DESC, pc.id DESC
+    LIMIT ?
+  `).all(limit));
+});
+
+app.post('/api/consumption', (req, res) => {
+  try {
+    const date = req.body.date || today();
+    const productId = asNumber(req.body.product_id, 'Product', { min: 1, allowZero: false });
+    const product = db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
+    if (!product || product.name === 'Wheat') throw new Error('Select a valid finished product');
+
+    const qtyKg = round2(asNumber(req.body.qty_kg, 'Quantity KG', { min: 0, allowZero: false }));
+    const reason = requiredText(req.body.reason, 'Reason');
+    if (!['Home', 'Company / Mill Use', 'Donation', 'Other'].includes(reason)) throw new Error('Select a valid consumption reason');
+
+    const stock = currentProductStock(productId);
+    if (qtyKg > stock + 0.001) throw new Error(`${product.name} consumption (${qtyKg} KG) exceeds current stock (${stock} KG)`);
+
+    const remarks = String(req.body.remarks ?? '').trim();
+
+    const tx = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO product_consumption (date,product_id,qty_kg,reason,remarks)
+        VALUES (?,?,?,?,?)
+      `).run(date, productId, qtyKg, reason, remarks);
+
+      db.prepare(`
+        INSERT INTO stock_movements
+          (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)
+      `).run(date, productId, -qtyKg, 'OUT', 'consumption', result.lastInsertRowid, `${reason}: ${remarks || 'Non-sale consumption'}`);
+
+      return result.lastInsertRowid;
+    });
+
+    const id = tx();
+    res.status(201).json({
+      id,
+      current_stock_kg: currentProductStock(productId),
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/stock/current', (_req, res) => {
   const rows = db.prepare(`
     SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
