@@ -33,7 +33,7 @@ export default function Customers(){
   </div>
 
   {selected&&<div className="modal"><div className="customer-modal">
-   <div className="modal-actions">{!editing&&<button className="secondary" onClick={()=>setEditing(true)}>Edit Customer</button>}<button className="secondary" onClick={()=>{setSelected(null);setEditing(false)}}>Close</button></div>
+   <div className="modal-actions">{!editing&&<button className="secondary" onClick={()=>setEditing(true)}>Edit Customer</button>}<button className="primary" onClick={()=>window.print()}>Print Statement / PDF</button><button className="secondary" onClick={()=>{setSelected(null);setEditing(false)}}>Close</button></div>
    {!editing?<><h2>{selected.name}</h2><p>{selected.phone} {selected.address&&`• ${selected.address}`}</p></>:<Card><h3>Edit Customer Details</h3><form className="form-grid" onSubmit={saveCustomer}><label className="span-2">Name<input required value={editCustomer.name} onChange={e=>setEditCustomer({...editCustomer,name:e.target.value})}/></label><label>Phone<input value={editCustomer.phone} onChange={e=>setEditCustomer({...editCustomer,phone:e.target.value})}/></label><label>Address<input value={editCustomer.address} onChange={e=>setEditCustomer({...editCustomer,address:e.target.value})}/></label><div className="span-2"><button className="primary" type="submit">Save Changes</button>{' '}<button className="secondary" type="button" onClick={()=>{setEditCustomer({name:selected.name||'',phone:selected.phone||'',address:selected.address||''});setEditing(false)}}>Cancel</button></div></form></Card>}
 
    <div className="stats-grid mini">

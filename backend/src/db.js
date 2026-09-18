@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS customers (
   name TEXT NOT NULL,
   phone TEXT,
   address TEXT,
+  opening_balance REAL NOT NULL DEFAULT 0,
+  opening_date TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -36,6 +38,8 @@ CREATE TABLE IF NOT EXISTS sources (
   source_type TEXT NOT NULL CHECK(source_type IN ('Government','Private')),
   phone TEXT,
   address TEXT,
+  opening_balance REAL NOT NULL DEFAULT 0,
+  opening_date TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -183,6 +187,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_bardana_reference ON bardana_movements(ref
 const productColumns = db.prepare('PRAGMA table_info(products)').all();
 if (!productColumns.some((column) => column.name === 'is_active')) {
   db.exec('ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;');
+}
+
+const customerColumns = db.prepare('PRAGMA table_info(customers)').all();
+if (!customerColumns.some((column) => column.name === 'opening_balance')) {
+  db.exec('ALTER TABLE customers ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0;');
+}
+if (!customerColumns.some((column) => column.name === 'opening_date')) {
+  db.exec('ALTER TABLE customers ADD COLUMN opening_date TEXT;');
+}
+
+const sourceColumns = db.prepare('PRAGMA table_info(sources)').all();
+if (!sourceColumns.some((column) => column.name === 'opening_balance')) {
+  db.exec('ALTER TABLE sources ADD COLUMN opening_balance REAL NOT NULL DEFAULT 0;');
+}
+if (!sourceColumns.some((column) => column.name === 'opening_date')) {
+  db.exec('ALTER TABLE sources ADD COLUMN opening_date TEXT;');
 }
 
 const wheatColumns = db.prepare('PRAGMA table_info(wheat_in)').all();

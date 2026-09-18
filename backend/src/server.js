@@ -30,19 +30,21 @@ const currentProductStock = (productId) => round2(
   db.prepare('SELECT COALESCE(SUM(qty_kg), 0) AS qty FROM stock_movements WHERE product_id = ?').get(productId).qty
 );
 const customerBalance = (customerId) => {
+  const opening = db.prepare('SELECT COALESCE(opening_balance,0) AS amount FROM customers WHERE id=?').get(customerId)?.amount || 0;
   const sale = db.prepare('SELECT COALESCE(SUM(pending_amount), 0) AS total FROM sales WHERE customer_id = ?').get(customerId).total;
   const payment = db.prepare('SELECT COALESCE(SUM(amount), 0) AS total FROM payments WHERE customer_id = ?').get(customerId).total;
-  return round2(sale - payment);
+  return round2(Number(opening) + Number(sale) - Number(payment));
 };
 
 const sourceBalance = (sourceId) => {
+  const opening = db.prepare('SELECT COALESCE(opening_balance,0) AS amount FROM sources WHERE id=?').get(sourceId)?.amount || 0;
   const wheat = db.prepare(`
     SELECT COALESCE(SUM(total_cost + COALESCE(bardana_cost,0)),0) AS total
     FROM wheat_in WHERE source_id=?
   `).get(sourceId).total;
   const bardana = db.prepare('SELECT COALESCE(SUM(total_cost),0) AS total FROM bardana_purchases WHERE source_id=?').get(sourceId).total;
   const payment = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM source_payments WHERE source_id=?').get(sourceId).total;
-  return round2(Number(wheat) + Number(bardana) - Number(payment));
+  return round2(Number(opening) + Number(wheat) + Number(bardana) - Number(payment));
 };
 
 const bardanaStock = () => {
@@ -147,7 +149,7 @@ app.get('/api/customers', (_req, res) => {
           - COALESCE((SELECT SUM(p.amount) FROM payments p WHERE p.customer_id=c.id),0),2) AS balance
     FROM customers c
     ORDER BY c.name COLLATE NOCASE
-  `).all();
+  `).all().map((row) => ({ ...row, balance: customerBalance(row.id) }));
   res.json(rows);
 });
 
@@ -209,9 +211,19 @@ app.get('/api/customers/:id', (req, res) => {
     ORDER BY date ASC, created_at ASC, id ASC
   `).all(id, id);
 
+  if (Number(customer.opening_balance || 0) !== 0) {
+    const opening = Number(customer.opening_balance);
+    events.unshift({
+      type: 'opening', id: 0, date: customer.opening_date || '', created_at: '', reference: 'Opening Balance',
+      debit: opening > 0 ? opening : 0, credit: opening < 0 ? Math.abs(opening) : 0,
+      pending_on_sale: 0, note: 'Opening balance from manual records',
+    });
+  }
+
   let running = 0;
   const ledger = events.map((e) => {
     if (e.type === 'sale') running += Number(e.pending_on_sale || 0);
+    else if (e.type === 'opening') running += Number(e.debit || 0) - Number(e.credit || 0);
     else running -= Number(e.credit || 0);
     return { ...e, balance: round2(running) };
   }).reverse();
@@ -321,6 +333,15 @@ app.get('/api/sources/:id', (req, res) => {
     FROM source_payments p WHERE p.source_id=?
     ORDER BY date ASC, created_at ASC, type ASC, id ASC
   `).all(id, id, id);
+
+  if (Number(source.opening_balance || 0) !== 0) {
+    const opening = Number(source.opening_balance);
+    events.unshift({
+      type: 'opening', id: 0, date: source.opening_date || '', created_at: '', reference: 'Opening Balance',
+      debit: opening > 0 ? opening : 0, credit: opening < 0 ? Math.abs(opening) : 0,
+      note: 'Opening balance from manual records',
+    });
+  }
 
   let running = 0;
   const ledger = events.map((event) => {
