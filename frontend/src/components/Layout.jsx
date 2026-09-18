@@ -1,8 +1,10 @@
-import { BarChart3, Boxes, Factory, LayoutDashboard, PackagePlus, ReceiptText, ShoppingBasket, Users, Wheat } from 'lucide-react';
+import { BarChart3, Boxes, Factory, LayoutDashboard, Package, PackagePlus, ReceiptText, ShoppingBasket, Truck, Users, Wheat } from 'lucide-react';
 
 const items = [
   ['dashboard', 'Dashboard', LayoutDashboard],
   ['wheat', 'Wheat In', Wheat],
+  ['bardana', 'Bardana In', Package],
+  ['sources', 'Sources', Truck],
   ['production', 'Production', Factory],
   ['sales', 'Sales / Billing', ReceiptText],
   ['customers', 'Customers', Users],
@@ -29,7 +31,7 @@ export default function Layout({ page, setPage, children }) {
       </aside>
       <main className="main-area">
         <header className="topbar">
-          <div><h1>{items.find(x => x[0] === page)?.[1]}</h1><p>Mill stock, sales and customer records</p></div>
+          <div><h1>{items.find(x => x[0] === page)?.[1]}</h1><p>Mill stock, purchases, sales and account records</p></div>
         </header>
         <section className="content">{children}</section>
       </main>

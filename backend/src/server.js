@@ -35,6 +35,31 @@ const customerBalance = (customerId) => {
   return round2(sale - payment);
 };
 
+const sourceBalance = (sourceId) => {
+  const wheat = db.prepare(`
+    SELECT COALESCE(SUM(total_cost + COALESCE(bardana_cost,0)),0) AS total
+    FROM wheat_in WHERE source_id=?
+  `).get(sourceId).total;
+  const bardana = db.prepare('SELECT COALESCE(SUM(total_cost),0) AS total FROM bardana_purchases WHERE source_id=?').get(sourceId).total;
+  const payment = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM source_payments WHERE source_id=?').get(sourceId).total;
+  return round2(Number(wheat) + Number(bardana) - Number(payment));
+};
+
+const bardanaStock = () => {
+  const row = db.prepare(`
+    SELECT
+      COALESCE(SUM(CASE WHEN qty_bags>0 THEN qty_bags ELSE 0 END),0) AS total_received,
+      ABS(COALESCE(SUM(CASE WHEN qty_bags<0 THEN qty_bags ELSE 0 END),0)) AS used,
+      COALESCE(SUM(qty_bags),0) AS current
+    FROM bardana_movements
+  `).get();
+  return {
+    total_received: round2(row.total_received),
+    used: round2(row.used),
+    current: round2(row.current),
+  };
+};
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/products', (req, res) => {
@@ -216,35 +241,207 @@ app.post('/api/payments', (req, res) => {
   }
 });
 
+app.get('/api/sources', (_req, res) => {
+  const rows = db.prepare(`
+    SELECT s.*,
+      ROUND(COALESCE((SELECT SUM(w.total_cost + COALESCE(w.bardana_cost,0)) FROM wheat_in w WHERE w.source_id=s.id),0)
+        + COALESCE((SELECT SUM(b.total_cost) FROM bardana_purchases b WHERE b.source_id=s.id),0),2) AS total_purchased,
+      ROUND(COALESCE((SELECT SUM(sp.amount) FROM source_payments sp WHERE sp.source_id=s.id),0),2) AS total_paid
+    FROM sources s
+    ORDER BY s.name COLLATE NOCASE
+  `).all().map((row) => ({ ...row, balance: sourceBalance(row.id) }));
+  res.json(rows);
+});
+
+app.post('/api/sources', (req, res) => {
+  try {
+    const name = requiredText(req.body.name, 'Source name');
+    const sourceType = requiredText(req.body.source_type, 'Source type');
+    if (!['Government', 'Private'].includes(sourceType)) throw new Error('Source type must be Government or Private');
+    const existing = db.prepare('SELECT id FROM sources WHERE LOWER(name)=LOWER(?) AND source_type=?').get(name, sourceType);
+    if (existing) throw new Error('Source already exists');
+    const result = db.prepare('INSERT INTO sources (name,source_type,phone,address) VALUES (?,?,?,?)')
+      .run(name, sourceType, String(req.body.phone ?? '').trim(), String(req.body.address ?? '').trim());
+    res.status(201).json(db.prepare('SELECT * FROM sources WHERE id=?').get(result.lastInsertRowid));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/sources/:id/update', (req, res) => {
+  try {
+    const id = asNumber(req.params.id, 'Source', { min: 1, allowZero: false });
+    const existing = db.prepare('SELECT id FROM sources WHERE id=?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Source not found' });
+    const name = requiredText(req.body.name, 'Source name');
+    const sourceType = requiredText(req.body.source_type, 'Source type');
+    if (!['Government', 'Private'].includes(sourceType)) throw new Error('Source type must be Government or Private');
+    const duplicate = db.prepare('SELECT id FROM sources WHERE LOWER(name)=LOWER(?) AND source_type=? AND id<>?').get(name, sourceType, id);
+    if (duplicate) throw new Error('Another source with this name and type already exists');
+    db.prepare('UPDATE sources SET name=?,source_type=?,phone=?,address=? WHERE id=?')
+      .run(name, sourceType, String(req.body.phone ?? '').trim(), String(req.body.address ?? '').trim(), id);
+    // Keep the human-readable snapshot on wheat records aligned for reports.
+    db.prepare('UPDATE wheat_in SET source_name=?,source_type=? WHERE source_id=?').run(name, sourceType, id);
+    res.json(db.prepare('SELECT * FROM sources WHERE id=?').get(id));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/sources/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const source = db.prepare('SELECT * FROM sources WHERE id=?').get(id);
+  if (!source) return res.status(404).json({ error: 'Source not found' });
+
+  const wheatTotal = db.prepare(`
+    SELECT ROUND(COALESCE(SUM(total_cost + COALESCE(bardana_cost,0)),0),2) AS total,
+           ROUND(COALESCE(SUM(total_kg),0),2) AS wheat_kg,
+           ROUND(COALESCE(SUM(bags),0),2) AS bardana_with_wheat
+    FROM wheat_in WHERE source_id=?
+  `).get(id);
+  const bardanaTotal = db.prepare(`
+    SELECT ROUND(COALESCE(SUM(total_cost),0),2) AS total,
+           ROUND(COALESCE(SUM(quantity),0),2) AS bags
+    FROM bardana_purchases WHERE source_id=?
+  `).get(id);
+  const paid = db.prepare('SELECT ROUND(COALESCE(SUM(amount),0),2) AS total FROM source_payments WHERE source_id=?').get(id).total;
+
+  const events = db.prepare(`
+    SELECT 'wheat' AS type, w.id, w.date, w.created_at, 'Wheat Purchase #' || w.id AS reference,
+           (w.total_cost + COALESCE(w.bardana_cost,0)) AS debit, 0 AS credit,
+           w.remarks AS note
+    FROM wheat_in w WHERE w.source_id=?
+    UNION ALL
+    SELECT 'bardana' AS type, b.id, b.date, b.created_at, 'Bardana Purchase #' || b.id AS reference,
+           b.total_cost AS debit, 0 AS credit, b.remarks AS note
+    FROM bardana_purchases b WHERE b.source_id=?
+    UNION ALL
+    SELECT 'payment' AS type, p.id, p.date, p.created_at, 'Payment' AS reference,
+           0 AS debit, p.amount AS credit, p.note AS note
+    FROM source_payments p WHERE p.source_id=?
+    ORDER BY date ASC, created_at ASC, type ASC, id ASC
+  `).all(id, id, id);
+
+  let running = 0;
+  const ledger = events.map((event) => {
+    running += Number(event.debit || 0) - Number(event.credit || 0);
+    return { ...event, balance: round2(running) };
+  }).reverse();
+
+  res.json({
+    ...source,
+    total_purchased: round2(Number(wheatTotal.total) + Number(bardanaTotal.total)),
+    total_paid: round2(paid),
+    balance: sourceBalance(id),
+    wheat_kg: round2(wheatTotal.wheat_kg),
+    bardana_bags: round2(Number(wheatTotal.bardana_with_wheat) + Number(bardanaTotal.bags)),
+    ledger,
+  });
+});
+
+app.post('/api/source-payments', (req, res) => {
+  try {
+    const sourceId = asNumber(req.body.source_id, 'Source', { min: 1, allowZero: false });
+    const source = db.prepare('SELECT id FROM sources WHERE id=?').get(sourceId);
+    if (!source) throw new Error('Source not found');
+    const amount = asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false });
+    const date = req.body.date || today();
+    const result = db.prepare('INSERT INTO source_payments (source_id,date,amount,note) VALUES (?,?,?,?)')
+      .run(sourceId, date, round2(amount), String(req.body.note ?? '').trim());
+    res.status(201).json({ id: result.lastInsertRowid, balance: sourceBalance(sourceId) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/wheat-in', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
-  res.json(db.prepare('SELECT * FROM wheat_in ORDER BY date DESC, id DESC LIMIT ?').all(limit));
+  res.json(db.prepare(`
+    SELECT w.*, COALESCE(s.name,w.source_name) AS source_name,
+           COALESCE(s.source_type,w.source_type) AS source_type,
+           ROUND(w.total_cost + COALESCE(w.bardana_cost,0),2) AS purchase_total
+    FROM wheat_in w
+    LEFT JOIN sources s ON s.id=w.source_id
+    ORDER BY w.date DESC, w.id DESC LIMIT ?
+  `).all(limit));
 });
 
 app.post('/api/wheat-in', (req, res) => {
   try {
     const date = req.body.date || today();
-    const sourceType = requiredText(req.body.source_type, 'Source type');
-    if (!['Government', 'Private'].includes(sourceType)) throw new Error('Source type must be Government or Private');
-    const sourceName = requiredText(req.body.source_name, 'Source / supplier');
+    const sourceId = asNumber(req.body.source_id, 'Source', { min: 1, allowZero: false });
+    const source = db.prepare('SELECT * FROM sources WHERE id=?').get(sourceId);
+    if (!source) throw new Error('Source not found');
     const bags = asNumber(req.body.bags ?? 0, 'Bags');
+    if (!Number.isInteger(bags)) throw new Error('Number of bags must be a whole number');
     const totalKg = asNumber(req.body.total_kg, 'Total KG', { min: 0, allowZero: false });
-    const rate = asNumber(req.body.rate_per_kg, 'Rate per KG');
+    const rate = asNumber(req.body.rate_per_kg, 'Wheat rate per KG');
+    const bardanaRate = asNumber(req.body.bardana_rate_per_bag ?? 0, 'Bardana rate per bag');
     const totalCost = round2(totalKg * rate);
+    const bardanaCost = round2(bags * bardanaRate);
     const wheat = getProduct('Wheat');
+    const remarks = String(req.body.remarks ?? '').trim();
 
     const tx = db.transaction(() => {
-      const r = db.prepare(`INSERT INTO wheat_in (date,source_type,source_name,bags,total_kg,rate_per_kg,total_cost,remarks)
-        VALUES (?,?,?,?,?,?,?,?)`).run(date, sourceType, sourceName, bags, totalKg, rate, totalCost, String(req.body.remarks ?? '').trim());
+      const result = db.prepare(`
+        INSERT INTO wheat_in
+          (date,source_id,source_type,source_name,bags,total_kg,rate_per_kg,total_cost,bardana_rate_per_bag,bardana_cost,remarks)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?)
+      `).run(date, sourceId, source.source_type, source.name, bags, totalKg, rate, totalCost, bardanaRate, bardanaCost, remarks);
+      const id = result.lastInsertRowid;
       db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
-        VALUES (?,?,?,?,?,?,?)`).run(date, wheat.id, totalKg, 'IN', 'wheat_in', r.lastInsertRowid, `Wheat received from ${sourceName}`);
-      return r.lastInsertRowid;
+        VALUES (?,?,?,?,?,?,?)`).run(date, wheat.id, totalKg, 'IN', 'wheat_in', id, `Wheat received from ${source.name}`);
+      if (bags > 0) {
+        db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?)`).run(date, bags, 'IN', 'wheat_in', id, `Bardana received with wheat from ${source.name}`);
+      }
+      return id;
     });
     const id = tx();
-    res.status(201).json(db.prepare('SELECT * FROM wheat_in WHERE id=?').get(id));
+    res.status(201).json({ id, wheat_cost: totalCost, bardana_cost: bardanaCost, total_purchase: round2(totalCost + bardanaCost) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+app.get('/api/bardana-purchases', (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  res.json(db.prepare(`
+    SELECT b.*, s.name AS source_name, s.source_type
+    FROM bardana_purchases b JOIN sources s ON s.id=b.source_id
+    ORDER BY b.date DESC, b.id DESC LIMIT ?
+  `).all(limit));
+});
+
+app.post('/api/bardana-purchases', (req, res) => {
+  try {
+    const date = req.body.date || today();
+    const sourceId = asNumber(req.body.source_id, 'Source', { min: 1, allowZero: false });
+    const source = db.prepare('SELECT * FROM sources WHERE id=?').get(sourceId);
+    if (!source) throw new Error('Source not found');
+    const quantity = asNumber(req.body.quantity, 'Bardana quantity', { min: 1, allowZero: false });
+    if (!Number.isInteger(quantity)) throw new Error('Bardana quantity must be a whole number');
+    const rate = asNumber(req.body.rate_per_bag ?? 0, 'Rate per bag');
+    const totalCost = round2(quantity * rate);
+    const remarks = String(req.body.remarks ?? '').trim();
+
+    const tx = db.transaction(() => {
+      const result = db.prepare(`INSERT INTO bardana_purchases (date,source_id,quantity,rate_per_bag,total_cost,remarks)
+        VALUES (?,?,?,?,?,?)`).run(date, sourceId, quantity, rate, totalCost, remarks);
+      const id = result.lastInsertRowid;
+      db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?)`).run(date, quantity, 'IN', 'bardana_purchase', id, `Bardana purchased from ${source.name}`);
+      return id;
+    });
+    const id = tx();
+    res.status(201).json({ id, total_cost: totalCost, source_balance: sourceBalance(sourceId) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/bardana/stock', (_req, res) => {
+  res.json(bardanaStock());
 });
 
 app.get('/api/production', (req, res) => {
