@@ -1,4 +1,4 @@
-import { BarChart3, Boxes, ClipboardList, Factory, LayoutDashboard, Package, PackagePlus, ReceiptText, ShoppingBasket, Truck, Users, WalletCards, Wheat, Database } from 'lucide-react';
+import { Boxes, ClipboardList, Factory, LayoutDashboard, Package, PackageMinus, PackagePlus, ReceiptText, ShoppingBasket, Truck, Users, WalletCards, Wheat, Database } from 'lucide-react';
 
 const items = [
   ['dashboard', 'Dashboard', LayoutDashboard],
@@ -7,13 +7,13 @@ const items = [
   ['sources', 'Sources', Truck],
   ['production', 'Production', Factory],
   ['sales', 'Sales / Billing', ReceiptText],
+  ['consumption', 'Stock Out / Consumption', PackageMinus],
   ['customers', 'Customers', Users],
   ['products', 'Products', PackagePlus],
   ['stock', 'Stock', Boxes],
   ['appendix', 'Appendix / Daily Record', ClipboardList],
   ['expenses', 'Expenses', WalletCards],
   ['opening', 'Opening Data', Database],
-  ['reports', 'Reports', BarChart3],
 ];
 
 export default function Layout({ page, setPage, children }) {

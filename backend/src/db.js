@@ -171,6 +171,18 @@ CREATE TABLE IF NOT EXISTS other_expenses (
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS product_consumption (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  product_id INTEGER NOT NULL,
+  qty_kg REAL NOT NULL,
+  reason TEXT NOT NULL,
+  remarks TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(product_id) REFERENCES products(id)
+);
+
+
 CREATE INDEX IF NOT EXISTS idx_stock_date ON stock_movements(date);
 CREATE INDEX IF NOT EXISTS idx_stock_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id);

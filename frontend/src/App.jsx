@@ -11,8 +11,8 @@ import Products from './pages/Products';
 import Stock from './pages/Stock';
 import Appendix from './pages/Appendix';
 import Expenses from './pages/Expenses';
-import Reports from './pages/Reports';
 import OpeningData from './pages/OpeningData';
+import Consumption from './pages/Consumption';
 
-const pages={dashboard:Dashboard,wheat:WheatIn,bardana:BardanaIn,sources:Sources,production:Production,sales:Sales,customers:Customers,products:Products,stock:Stock,appendix:Appendix,expenses:Expenses,opening:OpeningData,reports:Reports};
+const pages={dashboard:Dashboard,wheat:WheatIn,bardana:BardanaIn,sources:Sources,production:Production,sales:Sales,consumption:Consumption,customers:Customers,products:Products,stock:Stock,appendix:Appendix,expenses:Expenses,opening:OpeningData};
 export default function App(){const [page,setPage]=useState('dashboard'); const Page=pages[page]; return <Layout page={page} setPage={setPage}><Page key={page}/></Layout>}
