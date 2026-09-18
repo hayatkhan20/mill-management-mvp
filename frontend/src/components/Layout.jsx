@@ -1,19 +1,16 @@
-import { Boxes, ClipboardList, Factory, LayoutDashboard, Package, PackageMinus, PackagePlus, ReceiptText, ShoppingBasket, Truck, Users, WalletCards, Wheat, Database } from 'lucide-react';
+import { Boxes, ClipboardList, Factory, LayoutDashboard, PackageMinus, ReceiptText, Settings as SettingsIcon, ShoppingBasket, UsersRound, WalletCards } from 'lucide-react';
 
 const items = [
   ['dashboard', 'Dashboard', LayoutDashboard],
-  ['wheat', 'Wheat In', Wheat],
-  ['bardana', 'Bardana In', Package],
-  ['sources', 'Sources', Truck],
+  ['purchases', 'Purchases', ShoppingBasket],
   ['production', 'Production', Factory],
   ['sales', 'Sales / Billing', ReceiptText],
-  ['consumption', 'Stock Out / Consumption', PackageMinus],
-  ['customers', 'Customers', Users],
-  ['products', 'Products', PackagePlus],
+  ['consumption', 'Consumption', PackageMinus],
+  ['accounts', 'Accounts', UsersRound],
   ['stock', 'Stock', Boxes],
-  ['appendix', 'Appendix / Daily Record', ClipboardList],
+  ['appendix', 'Appendix', ClipboardList],
   ['expenses', 'Expenses', WalletCards],
-  ['opening', 'Opening Data', Database],
+  ['settings', 'Settings', SettingsIcon],
 ];
 
 export default function Layout({ page, setPage, children }) {

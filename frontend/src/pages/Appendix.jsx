@@ -12,7 +12,7 @@ export default function Appendix(){
  },[date]);
 
  return <>
-  <PageHeader title="Appendix / Daily Record" text="Daily production percentage is calculated from the actual KG entered in Production."/>
+  <PageHeader title="Appendix" text="Daily production percentage is calculated from the actual KG entered in Production."/>
   <ErrorBox error={error}/>
   <Card>
    <div className="section-title"><h3>Daily Record</h3><DateField value={date} onChange={setDate}/></div>
