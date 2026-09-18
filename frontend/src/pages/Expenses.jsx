@@ -4,26 +4,49 @@ import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Com
 import { money, monthNow, today } from '../utils';
 import DateField, { formatDateDMY } from '../components/DateField';
 
-const blank=()=>({date:today(),category:'',amount:'',note:''});
+const blank=()=>({date:today(),amount:'',note:''});
 const recurringCategories=['Electricity Bill','Meal','Employee Salaries','Machinery Cost'];
 
 export default function Expenses(){
  const [month,setMonth]=useState(monthNow()),[data,setData]=useState(null),[form,setForm]=useState(blank()),[editingId,setEditingId]=useState(null),[error,setError]=useState(''),[success,setSuccess]=useState('');
+ const [categoryChoice,setCategoryChoice]=useState(''),[customCategory,setCustomCategory]=useState('');
+
  const load=()=>api.get(`/expenses?month=${month}`).then(setData).catch(e=>setError(e.message));
  useEffect(()=>{setError('');load()},[month]);
 
+ const resetForm=()=>{
+  setEditingId(null);
+  setForm(blank());
+  setCategoryChoice('');
+  setCustomCategory('');
+ };
+
  const submit=async e=>{
   e.preventDefault();setError('');setSuccess('');
+  const category=categoryChoice==='custom'?customCategory.trim():categoryChoice;
+  if(!category){setError('Please select or enter an expense category.');return;}
   try{
-   if(editingId) await api.post(`/expenses/${editingId}/update`,form);
-   else await api.post('/expenses',form);
+   const payload={...form,category};
+   if(editingId) await api.post(`/expenses/${editingId}/update`,payload);
+   else await api.post('/expenses',payload);
    setSuccess(editingId?'Expense updated.':'Expense added.');
-   setEditingId(null);setForm(blank());await load();
+   resetForm();
+   await load();
   }catch(e){setError(e.message)}
  };
 
- const edit=(row)=>{setEditingId(row.id);setForm({date:row.date,category:row.category,amount:row.amount,note:row.note||''});window.scrollTo({top:0,behavior:'smooth'})};
- const cancel=()=>{setEditingId(null);setForm(blank())};
+ const edit=(row)=>{
+  setEditingId(row.id);
+  setForm({date:row.date,amount:row.amount,note:row.note||''});
+  if(recurringCategories.includes(row.category)){
+   setCategoryChoice(row.category);
+   setCustomCategory('');
+  }else{
+   setCategoryChoice('custom');
+   setCustomCategory(row.category);
+  }
+  window.scrollTo({top:0,behavior:'smooth'});
+ };
 
  return <>
   <PageHeader title="Expenses" text="Wheat and Bardana purchase expenses come automatically from purchase records. Add only other expenses here."/>
@@ -44,14 +67,26 @@ export default function Expenses(){
     <h3>{editingId?'Edit Other Expense':'Add Other Expense'}</h3>
     <form className="form-grid" onSubmit={submit}>
      <label>Date (DD/MM/YYYY)<DateField required value={form.date} onChange={date=>setForm({...form,date})}/></label>
+
      <label>Category
-      <input required list="expense-categories" value={form.category} onChange={e=>setForm({...form,category:e.target.value})} placeholder="Select or type a one-time category"/>
-      <datalist id="expense-categories">{recurringCategories.map(x=><option value={x} key={x}/>)}</datalist>
-      <small>Common repeatable categories are suggested; any other category can be typed once.</small>
+      <select required value={categoryChoice} onChange={e=>{setCategoryChoice(e.target.value);if(e.target.value!=='custom')setCustomCategory('')}}>
+       <option value="">Select category</option>
+       {recurringCategories.map(x=><option value={x} key={x}>{x}</option>)}
+       <option value="custom">One-time / Custom Category</option>
+      </select>
      </label>
+
+     {categoryChoice==='custom'&&<label className="span-2">Category Name
+      <input required autoFocus value={customCategory} onChange={e=>setCustomCategory(e.target.value)} placeholder="e.g. Generator Repair, Office Chair, Fuel"/>
+     </label>}
+
      <label>Amount<input required type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></label>
      <label>Note<input value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optional"/></label>
-     <div className="span-2"><button className="primary">{editingId?'Save Changes':'Add Expense'}</button>{editingId&&<> <button type="button" className="secondary" onClick={cancel}>Cancel</button></>}</div>
+
+     <div className="span-2">
+      <button className="primary">{editingId?'Save Changes':'Add Expense'}</button>
+      {editingId&&<> <button type="button" className="secondary" onClick={resetForm}>Cancel</button></>}
+     </div>
     </form>
    </Card>
 
