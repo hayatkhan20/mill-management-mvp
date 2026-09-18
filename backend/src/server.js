@@ -642,6 +642,91 @@ app.get('/api/stock/monthly', (req, res) => {
 
 
 
+
+app.get('/api/expenses', (req, res) => {
+  const month = String(req.query.month || today().slice(0, 7));
+  if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'Month must be YYYY-MM' });
+  const start = `${month}-01`;
+  const [year, m] = month.split('-').map(Number);
+  const end = new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10);
+
+  const wheatRows = db.prepare(`
+    SELECT id,date,source_name,total_cost AS amount,remarks AS note
+    FROM wheat_in
+    WHERE date>=? AND date<=?
+    ORDER BY date DESC,id DESC
+  `).all(start, end).map((row) => ({ ...row, type: 'Wheat Purchase', source: row.source_name }));
+
+  const wheatBardanaRows = db.prepare(`
+    SELECT id,date,source_name,bardana_cost AS amount,remarks AS note
+    FROM wheat_in
+    WHERE date>=? AND date<=? AND COALESCE(bardana_cost,0)>0
+    ORDER BY date DESC,id DESC
+  `).all(start, end).map((row) => ({ ...row, type: 'Bardana with Wheat', source: row.source_name }));
+
+  const bardanaRows = db.prepare(`
+    SELECT b.id,b.date,s.name AS source,b.total_cost AS amount,b.remarks AS note
+    FROM bardana_purchases b
+    JOIN sources s ON s.id=b.source_id
+    WHERE b.date>=? AND b.date<=?
+    ORDER BY b.date DESC,b.id DESC
+  `).all(start, end).map((row) => ({ ...row, type: 'Bardana Purchase' }));
+
+  const manual = db.prepare(`
+    SELECT id,date,category,amount,note
+    FROM other_expenses
+    WHERE date>=? AND date<=?
+    ORDER BY date DESC,id DESC
+  `).all(start, end);
+
+  const wheatTotal = round2(wheatRows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
+  const bardanaTotal = round2([...wheatBardanaRows, ...bardanaRows].reduce((sum, row) => sum + Number(row.amount || 0), 0));
+  const otherTotal = round2(manual.reduce((sum, row) => sum + Number(row.amount || 0), 0));
+
+  res.json({
+    month,
+    summary: {
+      wheat: wheatTotal,
+      bardana: bardanaTotal,
+      other: otherTotal,
+      total: round2(wheatTotal + bardanaTotal + otherTotal),
+    },
+    automatic: [...wheatRows, ...wheatBardanaRows, ...bardanaRows].sort((a, b) => b.date.localeCompare(a.date)),
+    manual,
+  });
+});
+
+app.post('/api/expenses', (req, res) => {
+  try {
+    const date = req.body.date || today();
+    const category = requiredText(req.body.category, 'Expense category');
+    const amount = round2(asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false }));
+    const note = String(req.body.note ?? '').trim();
+    const result = db.prepare('INSERT INTO other_expenses (date,category,amount,note) VALUES (?,?,?,?)')
+      .run(date, category, amount, note);
+    res.status(201).json(db.prepare('SELECT * FROM other_expenses WHERE id=?').get(result.lastInsertRowid));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/expenses/:id/update', (req, res) => {
+  try {
+    const id = asNumber(req.params.id, 'Expense', { min: 1, allowZero: false });
+    const existing = db.prepare('SELECT id FROM other_expenses WHERE id=?').get(id);
+    if (!existing) return res.status(404).json({ error: 'Expense not found' });
+    const date = req.body.date || today();
+    const category = requiredText(req.body.category, 'Expense category');
+    const amount = round2(asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false }));
+    const note = String(req.body.note ?? '').trim();
+    db.prepare('UPDATE other_expenses SET date=?,category=?,amount=?,note=? WHERE id=?')
+      .run(date, category, amount, note, id);
+    res.json(db.prepare('SELECT * FROM other_expenses WHERE id=?').get(id));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.get('/api/appendix/daily', (req, res) => {
   const date = String(req.query.date || today());
 

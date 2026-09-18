@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { CalendarDays } from 'lucide-react';
 
 export const formatDateDMY = (iso='') => {
   const match=String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -23,6 +24,7 @@ const formatTyping=(value)=>{
 
 export default function DateField({value,onChange,required=false}){
   const [text,setText]=useState(formatDateDMY(value));
+  const pickerRef=useRef(null);
   useEffect(()=>setText(formatDateDMY(value)),[value]);
 
   const change=(e)=>{
@@ -37,5 +39,28 @@ export default function DateField({value,onChange,required=false}){
     if(!iso) setText(formatDateDMY(value));
   };
 
-  return <input required={required} inputMode="numeric" placeholder="DD/MM/YYYY" value={text} onChange={change} onBlur={blur}/>;
+  const openPicker=()=>{
+    const input=pickerRef.current;
+    if(!input) return;
+    try{
+      if(typeof input.showPicker==='function') input.showPicker();
+      else input.click();
+    }catch{
+      input.click();
+    }
+  };
+
+  return <div className="date-field-wrap">
+    <input required={required} inputMode="numeric" placeholder="DD/MM/YYYY" value={text} onChange={change} onBlur={blur}/>
+    <button type="button" className="date-picker-btn" aria-label="Open calendar" onClick={openPicker}><CalendarDays size={17}/></button>
+    <input
+      ref={pickerRef}
+      className="date-native-picker"
+      type="date"
+      value={value||''}
+      onChange={e=>{if(e.target.value) onChange(e.target.value)}}
+      tabIndex={-1}
+      aria-hidden="true"
+    />
+  </div>;
 }

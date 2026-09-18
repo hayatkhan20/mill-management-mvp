@@ -158,6 +158,15 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   FOREIGN KEY(product_id) REFERENCES products(id)
 );
 
+CREATE TABLE IF NOT EXISTS other_expenses (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  category TEXT NOT NULL,
+  amount REAL NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_stock_date ON stock_movements(date);
 CREATE INDEX IF NOT EXISTS idx_stock_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id);
@@ -166,6 +175,7 @@ CREATE INDEX IF NOT EXISTS idx_production_items_production ON production_items(p
 CREATE INDEX IF NOT EXISTS idx_source_payments_source ON source_payments(source_id);
 CREATE INDEX IF NOT EXISTS idx_bardana_purchases_source ON bardana_purchases(source_id);
 CREATE INDEX IF NOT EXISTS idx_bardana_movements_date ON bardana_movements(date);
+CREATE INDEX IF NOT EXISTS idx_other_expenses_date ON other_expenses(date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_bardana_reference ON bardana_movements(reference_type, reference_id);
 `);
 
