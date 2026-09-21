@@ -20,7 +20,7 @@ export default function OpeningData(){
   };
 
   return <>
-    <PageHeader title="Opening Data" text="Use this once to enter current balances and stock from manual books before normal daily use."/>
+    <PageHeader title="Opening Data"/>
     <ErrorBox error={error}/><SuccessBox text={success}/>
 
     <div className="two-col">
