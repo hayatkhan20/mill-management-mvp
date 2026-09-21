@@ -8,7 +8,6 @@ export default function Settings(){
     <div className="page-header">
       <div>
         <h2>Settings</h2>
-        <p>Manage products and opening data.</p>
       </div>
     </div>
 
