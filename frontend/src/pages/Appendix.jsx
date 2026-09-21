@@ -12,7 +12,7 @@ export default function Appendix(){
  },[date]);
 
  return <>
-  <PageHeader title="Appendix" text="Daily production percentage is calculated from the actual KG entered in Production."/>
+  <PageHeader title="Appendix"/>
   <ErrorBox error={error}/>
   <Card>
    <div className="section-title"><h3>Daily Record</h3><DateField value={date} onChange={setDate}/></div>
@@ -26,7 +26,6 @@ export default function Appendix(){
      {data.rows.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td><td>{num(r.produced_kg)} KG</td><td>{num(r.percentage)}%</td><td>{num(r.closing_kg)} KG</td><td>—</td></tr>)}
      <tr><td><strong>Total</strong></td><td><strong>{num(data.total_produced_kg)} KG</strong></td><td><strong>{num(data.total_yield_percent)}%</strong></td><td></td><td></td></tr>
     </tbody></table></div>
-    <div className="note-card">Closing Bags will be calculated after the 20 KG / 40 KG packing conversion rule is confirmed. For now, production and closing stock remain in KG.</div>
    </>}
   </Card>
  </>;
