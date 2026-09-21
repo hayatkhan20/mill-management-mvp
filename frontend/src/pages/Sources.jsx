@@ -32,7 +32,7 @@ export default function Sources(){
  });
 
  return <>
-  <PageHeader title="Sources" text="Sources can provide wheat, Bardana, or both. Payments can be made before or after purchases."/>
+  <PageHeader title="Sources"/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
   <div className="two-col customers-layout">
    <Card><h3>Add Source</h3><form className="form-grid" onSubmit={add}>
@@ -72,7 +72,7 @@ export default function Sources(){
     <input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/>
     <input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/>
     <button className="primary">Pay</button>
-   </form><small>Payments can exceed the current payable amount; the extra amount becomes an advance with the source.</small></Card>
+   </form></Card>
 
    <Card><h3>Ledger</h3>{selected.ledger.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>Purchase</th><th>Payment</th><th>Balance</th></tr></thead><tbody>
     {selected.ledger.map((e,i)=><tr key={`${e.type}-${e.id}-${i}`}><td>{formatDateDMY(e.date)}</td><td>{e.reference}</td><td>{Number(e.debit)>0?money(e.debit):'—'}</td><td>{Number(e.credit)>0?money(e.credit):'—'}</td><td>{balanceLabel(e.balance)}</td></tr>)}
