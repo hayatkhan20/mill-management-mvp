@@ -31,7 +31,7 @@ export default function Layout({ page, setPage, children }) {
       </aside>
       <main className="main-area">
         <header className="topbar">
-          <div><h1>{items.find(x => x[0] === page)?.[1]}</h1><p>Mill stock, purchases, sales and account records</p></div>
+          <div><h1>{items.find(x => x[0] === page)?.[1]}</h1></div>
         </header>
         <section className="content">{children}</section>
       </main>
