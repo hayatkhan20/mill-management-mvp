@@ -8,7 +8,6 @@ export default function Purchases(){
     <div className="page-header">
       <div>
         <h2>Purchases</h2>
-        <p>Record Wheat and Bardana purchases from one place.</p>
       </div>
     </div>
 
