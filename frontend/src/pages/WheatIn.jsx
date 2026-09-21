@@ -46,7 +46,7 @@ export default function WheatIn(){
    </tbody></table></div>:<Empty/>}</Card>
   </div>
   {showAddSource&&<div className="modal"><div className="add-customer-modal">
-   <div className="modal-title-row"><div><h2>Add Source</h2><p>Add the source without leaving Wheat In.</p></div><button type="button" className="secondary" onClick={()=>setShowAddSource(false)}>Cancel</button></div>
+   <div className="modal-title-row"><div><h2>Add Source</h2></div><button type="button" className="secondary" onClick={()=>setShowAddSource(false)}>Cancel</button></div>
    <form className="form-grid" onSubmit={addSource}>
     <label className="span-2">Name<input required autoFocus value={newSource.name} onChange={e=>setNewSource({...newSource,name:e.target.value})}/></label>
     <label>Type<select value={newSource.source_type} onChange={e=>setNewSource({...newSource,source_type:e.target.value})}><option>Private</option><option>Government</option></select></label>
