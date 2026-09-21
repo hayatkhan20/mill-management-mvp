@@ -25,7 +25,7 @@ export default function Customers(){
  const filteredRows=rows.filter(r=>{const q=search.trim().toLowerCase();if(!q)return true;return [r.name,r.phone,r.address].some(value=>String(value||'').toLowerCase().includes(q))});
 
  return <>
-  <PageHeader title="Customers" text="Payments can be received against pending bills or kept as customer advance."/>
+  <PageHeader title="Customers"/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
   <div className="two-col customers-layout">
    <Card><h3>Add Customer</h3><form className="form-grid" onSubmit={add}><label className="span-2">Name<input required value={newCustomer.name} onChange={e=>setNewCustomer({...newCustomer,name:e.target.value})}/></label><label>Phone<input value={newCustomer.phone} onChange={e=>setNewCustomer({...newCustomer,phone:e.target.value})}/></label><label>Address<input value={newCustomer.address} onChange={e=>setNewCustomer({...newCustomer,address:e.target.value})}/></label><div className="span-2"><button className="primary">Add Customer</button></div></form></Card>
@@ -44,7 +44,7 @@ export default function Customers(){
 
    <div className="quantities">{selected.quantities.map(q=><span key={q.product}>{q.product}: <strong>{num(q.kg)} KG</strong></span>)}</div>
 
-   <Card><h3>Receive Payment / Advance</h3><form className="form-inline" onSubmit={pay}><DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/><input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/><input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/><button className="primary">Receive</button></form><small>If payment is greater than pending, the extra amount becomes customer advance.</small></Card>
+   <Card><h3>Receive Payment / Advance</h3><form className="form-inline" onSubmit={pay}><DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/><input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/><input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/><button className="primary">Receive</button></form></Card>
 
    <Card><h3>Ledger</h3>{selected.ledger.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>Purchase</th><th>Payment</th><th>Balance</th></tr></thead><tbody>{selected.ledger.map((e,i)=><tr key={`${e.type}-${e.id}-${i}`}><td>{formatDateDMY(e.date)}</td><td>{e.reference}</td><td>{e.type==='sale'?money(e.debit):'—'}</td><td>{money(e.credit)}</td><td className={e.balance<0?'advance':''}>{e.balance<0?`Advance ${money(Math.abs(e.balance))}`:money(e.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
   </div></div>}

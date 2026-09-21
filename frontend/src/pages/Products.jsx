@@ -25,7 +25,7 @@ export default function Products(){
 
   const finished=rows.filter(p=>p.name!=='Wheat');
   return <>
-    <PageHeader title="Products" text="Manage the finished-product types used in production and billing."/>
+    <PageHeader title="Products"/>
     <ErrorBox error={error}/><SuccessBox text={success}/>
     <div className="two-col products-layout">
       <Card>

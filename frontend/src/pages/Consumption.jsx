@@ -32,7 +32,7 @@ export default function Consumption(){
   };
 
   return <>
-    <PageHeader title="Consumption" text="Record finished products used at home, inside the mill/company, donated, or otherwise taken out without a sale."/>
+    <PageHeader title="Consumption"/>
     <div className="two-col">
       <Card>
         <h3>New Stock Out Entry</h3>

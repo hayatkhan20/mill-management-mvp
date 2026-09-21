@@ -49,7 +49,7 @@ export default function Production(){
   };
 
   return <>
-    <PageHeader title="Production Record" text="Enter wheat used and actual KG produced. Leave any product blank if none was produced."/>
+    <PageHeader title="Production Record"/>
     
     <Card>
       <h3>New Production Entry</h3>

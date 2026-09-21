@@ -8,7 +8,6 @@ export default function Accounts(){
     <div className="page-header">
       <div>
         <h2>Accounts</h2>
-        <p>Manage customer and source accounts.</p>
       </div>
     </div>
 
