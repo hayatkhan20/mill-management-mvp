@@ -20,7 +20,7 @@ export default function WheatIn(){
  const addSource=async e=>{e.preventDefault();setError('');setSuccess('');try{const created=await api.post('/sources',newSource);const refreshed=await api.get('/sources');setSources(refreshed);setForm(prev=>({...prev,source_id:String(created.id)}));setNewSource(blankSource());setShowAddSource(false);setSuccess(`${created.name} added and selected.`)}catch(e){setError(e.message)}};
 
  return <>
-  <PageHeader title="Wheat In" text="Wheat bags also count as Bardana received. Wheat and Bardana costs are recorded separately."/>
+  <PageHeader title="Wheat In"/>
   <div>
    <Card><h3>New Wheat Purchase</h3><ErrorBox error={error}/><SuccessBox text={success}/><form onSubmit={submit} className="form-grid">
     <label>Date (DD/MM/YYYY)<DateField required value={form.date} onChange={date=>setForm({...form,date})}/></label>

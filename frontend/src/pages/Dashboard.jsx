@@ -14,8 +14,6 @@ export default function Dashboard() {
     ["Today's Wheat In", `${num(data.wheat_received_today)} KG`],
     ["Today's Sales", money(data.sales_today)],
     ['Received Today', money(data.received_today)],
-    ['Total Customer Pending', money(data.total_pending)],
-    ['Active Products', num(data.active_products)],
   ];
   const finished=data.stocks.filter(x=>x.name!=='Wheat');
   return <>
