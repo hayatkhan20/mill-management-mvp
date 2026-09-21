@@ -49,7 +49,7 @@ export default function Expenses(){
  };
 
  return <>
-  <PageHeader title="Expenses" text="Wheat and Bardana purchase expenses come automatically from purchase records. Add only other expenses here."/>
+  <PageHeader title="Expenses"/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
 
   <Card>
