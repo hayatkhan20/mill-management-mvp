@@ -57,7 +57,7 @@ export default function Sales(){
  };
  const openSale=async id=>{try{setPrintSale(await api.get(`/sales/${id}`));}catch(e){setError(e.message)}};
 
- return <><PageHeader title="Sales / Billing" text="Products are sold in fixed 20 KG or 40 KG bags. Rate is entered per bag."/>
+ return <><PageHeader title="Sales / Billing"/>
  <Card><ErrorBox error={error}/><SuccessBox text={success}/><form onSubmit={submit}>
  <div className="form-grid sales-head">
    <label>Bill No.<input value={bill} readOnly/></label>
@@ -103,7 +103,7 @@ export default function Sales(){
 
 function AddCustomerModal({customer,setCustomer,onClose,onSave}){
  return <div className="modal"><div className="add-customer-modal">
-   <div className="modal-title-row"><div><h2>Add Customer</h2><p>Add the customer without leaving the bill.</p></div><button type="button" className="secondary" onClick={onClose}>Cancel</button></div>
+   <div className="modal-title-row"><div><h2>Add Customer</h2></div><button type="button" className="secondary" onClick={onClose}>Cancel</button></div>
    <form className="form-grid" onSubmit={onSave}>
      <label className="span-2">Name<input required autoFocus value={customer.name} onChange={e=>setCustomer({...customer,name:e.target.value})}/></label>
      <label>Phone<input value={customer.phone} onChange={e=>setCustomer({...customer,phone:e.target.value})}/></label>
