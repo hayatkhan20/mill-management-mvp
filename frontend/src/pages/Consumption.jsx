@@ -32,7 +32,7 @@ export default function Consumption(){
   };
 
   return <>
-    <div className="two-col">
+    <div>
       <Card>
         <h3>New Stock Out Entry</h3>
         <ErrorBox error={error}/><SuccessBox text={success}/>
@@ -58,7 +58,7 @@ export default function Consumption(){
         </form>
       </Card>
 
-      <Card>
+      <Card className="section-card-below">
         <h3>Recent Stock Out</h3>
         {rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Product</th><th>KG</th><th>Reason</th><th>Remarks</th></tr></thead><tbody>
           {rows.slice(0,30).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td><strong>{r.product_name}</strong></td><td>{num(r.qty_kg)} KG</td><td>{r.reason}</td><td>{r.remarks||'—'}</td></tr>)}

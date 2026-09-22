@@ -34,7 +34,7 @@ export default function Sources(){
  return <>
   <PageHeader title="Sources"/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
-  <div className="two-col customers-layout">
+  <div>
    <Card><h3>Add Source</h3><form className="form-grid" onSubmit={add}>
     <label className="span-2">Name<input required value={newSource.name} onChange={e=>setNewSource({...newSource,name:e.target.value})}/></label>
     <label>Type<select value={newSource.source_type} onChange={e=>setNewSource({...newSource,source_type:e.target.value})}><option>Private</option><option>Government</option></select></label>
@@ -43,7 +43,7 @@ export default function Sources(){
     <div className="span-2"><button className="primary">Add Source</button></div>
    </form></Card>
 
-   <Card><h3>Source Accounts</h3><input placeholder="Search by name, type, phone or address" value={search} onChange={e=>setSearch(e.target.value)}/>
+   <Card className="section-card-below"><h3>Source Accounts</h3><input placeholder="Search by name, type, phone or address" value={search} onChange={e=>setSearch(e.target.value)}/>
     {filtered.length?<div className="table-wrap"><table><thead><tr><th>Source</th><th>Purchased</th><th>Paid</th><th>Balance</th></tr></thead><tbody>
      {filtered.map(r=><tr className="clickable" key={r.id} onClick={()=>open(r.id)}><td><strong>{r.name}</strong><small>{r.source_type}{r.phone?` • ${r.phone}`:''}</small></td><td>{money(r.total_purchased)}</td><td>{money(r.total_paid)}</td><td className={Number(r.balance)>0?'pending':''}>{balanceLabel(r.balance)}</td></tr>)}
     </tbody></table></div>:<Empty/>}

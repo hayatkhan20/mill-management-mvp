@@ -27,9 +27,9 @@ export default function Customers(){
  return <>
   <PageHeader title="Customers"/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
-  <div className="two-col customers-layout">
+  <div>
    <Card><h3>Add Customer</h3><form className="form-grid" onSubmit={add}><label className="span-2">Name<input required value={newCustomer.name} onChange={e=>setNewCustomer({...newCustomer,name:e.target.value})}/></label><label>Phone<input value={newCustomer.phone} onChange={e=>setNewCustomer({...newCustomer,phone:e.target.value})}/></label><label>Address<input value={newCustomer.address} onChange={e=>setNewCustomer({...newCustomer,address:e.target.value})}/></label><div className="span-2"><button className="primary">Add Customer</button></div></form></Card>
-   <Card><h3>Customer Accounts</h3><input aria-label="Search customers" placeholder="Search by name, phone or address" value={search} onChange={e=>setSearch(e.target.value)}/>{filteredRows.length?<div className="table-wrap"><table><thead><tr><th>Customer</th><th>Purchased</th><th>Paid</th><th>Balance</th></tr></thead><tbody>{filteredRows.map(r=><tr className="clickable" key={r.id} onClick={()=>open(r.id)}><td><strong>{r.name}</strong><small>{r.phone}</small></td><td>{money(r.total_purchased)}</td><td>{money(r.total_paid)}</td><td className={r.balance>0?'pending':r.balance<0?'advance':''}>{balanceText(r.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
+   <Card className="section-card-below"><h3>Customer Accounts</h3><input aria-label="Search customers" placeholder="Search by name, phone or address" value={search} onChange={e=>setSearch(e.target.value)}/>{filteredRows.length?<div className="table-wrap"><table><thead><tr><th>Customer</th><th>Purchased</th><th>Paid</th><th>Balance</th></tr></thead><tbody>{filteredRows.map(r=><tr className="clickable" key={r.id} onClick={()=>open(r.id)}><td><strong>{r.name}</strong><small>{r.phone}</small></td><td>{money(r.total_purchased)}</td><td>{money(r.total_paid)}</td><td className={r.balance>0?'pending':r.balance<0?'advance':''}>{balanceText(r.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
   </div>
 
   {selected&&<div className="modal"><div className="customer-modal">
