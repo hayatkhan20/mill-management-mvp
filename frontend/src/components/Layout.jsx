@@ -1,19 +1,21 @@
 import { Boxes, ClipboardList, Factory, LayoutDashboard, PackageMinus, ReceiptText, Settings as SettingsIcon, ShoppingBasket, UsersRound, WalletCards } from 'lucide-react';
+import { useUiPreferences } from '../context/UiPreferences';
 
 const items = [
-  ['dashboard', 'Dashboard', LayoutDashboard],
-  ['purchases', 'Purchases', ShoppingBasket],
-  ['production', 'Production', Factory],
-  ['sales', 'Sales', ReceiptText],
-  ['consumption', 'Consumption', PackageMinus],
-  ['accounts', 'Accounts', UsersRound],
-  ['stock', 'Stock', Boxes],
-  ['appendix', 'Appendix', ClipboardList],
-  ['expenses', 'Expenses', WalletCards],
-  ['settings', 'Settings', SettingsIcon],
+  ['dashboard', 'dashboard', 'Dashboard', LayoutDashboard],
+  ['purchases', 'purchases', 'Purchases', ShoppingBasket],
+  ['production', 'production', 'Production', Factory],
+  ['sales', 'sales', 'Sales', ReceiptText],
+  ['consumption', 'consumption', 'Consumption', PackageMinus],
+  ['accounts', 'accounts', 'Accounts', UsersRound],
+  ['stock', 'stock', 'Stock', Boxes],
+  ['appendix', 'appendix', 'Appendix', ClipboardList],
+  ['expenses', 'expenses', 'Expenses', WalletCards],
+  ['settings', 'settings', 'Settings', SettingsIcon],
 ];
 
 export default function Layout({ page, setPage, children }) {
+  const {t}=useUiPreferences();
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -22,16 +24,16 @@ export default function Layout({ page, setPage, children }) {
           <div><strong>Mill Manager</strong><span>Simple Mill Records</span></div>
         </div>
         <nav>
-          {items.map(([key, label, Icon]) => (
+          {items.map(([key, tKey, fallback, Icon]) => (
             <button key={key} className={page === key ? 'nav-active' : ''} onClick={() => setPage(key)}>
-              <Icon size={18} /><span>{label}</span>
+              <Icon size={18} /><span>{t(tKey,fallback)}</span>
             </button>
           ))}
         </nav>
       </aside>
       <main className="main-area">
         <header className="topbar">
-          <div><h1>{items.find(x => x[0] === page)?.[1]}</h1></div>
+          <div><h1>{(()=>{const item=items.find(x=>x[0]===page);return item?t(item[1],item[2]):''})()}</h1></div>
         </header>
         <section className="content">{children}</section>
       </main>
