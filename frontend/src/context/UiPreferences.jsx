@@ -44,7 +44,17 @@ const translations = {
     openingProductStock:'ابتدائی مصنوعات اسٹاک', openingBardana:'ابتدائی باردانہ',
     openingCustomerBalance:'ابتدائی گاہک بقایا', openingSourceBalance:'ابتدائی ذریعہ بقایا',
     due:'واجب الادا', advance:'ایڈوانس', payable:'قابل ادائیگی', selectProduct:'مصنوعہ منتخب کریں',
-    selectCustomer:'گاہک منتخب کریں', selectSource:'ذریعہ منتخب کریں'
+    selectCustomer:'گاہک منتخب کریں', selectSource:'ذریعہ منتخب کریں', noRecords:'کوئی ریکارڈ نہیں', todayAtGlance:'آج کا خلاصہ',
+    wheatStock:'گندم اسٹاک', todaysWheatIn:'آج کی گندم آمد', todaysSales:'آج کی فروخت',
+    receivedToday:'آج موصول', currentFinishedStock:'موجودہ تیار مصنوعات اسٹاک', recentSales:'حالیہ فروخت',
+    stockLabel:'اسٹاک', editCustomer:'گاہک میں ترمیم', printStatement:'اسٹیٹمنٹ / PDF پرنٹ',
+    close:'بند کریں', editCustomerDetails:'گاہک تفصیل میں ترمیم', totalPurchased:'کل خریداری',
+    totalPaid:'کل ادا', currentAdvance:'موجودہ ایڈوانس', currentPending:'موجودہ بقایا',
+    receivePayment:'ادائیگی / ایڈوانس وصول', receive:'وصول کریں', ledger:'لیجر',
+    reference:'حوالہ', purchase:'خریداری', payment:'ادائیگی', editSource:'ذریعہ میں ترمیم',
+    editSourceDetails:'ذریعہ تفصیل میں ترمیم', currentBalance:'موجودہ بیلنس', paySource:'ذریعہ کو ادائیگی',
+    pay:'ادا کریں', settled:'مکمل ادائیگی', searchCustomers:'نام، فون یا پتہ سے تلاش',
+    searchSources:'نام، قسم، فون یا پتہ سے تلاش'
   }
 };
 
