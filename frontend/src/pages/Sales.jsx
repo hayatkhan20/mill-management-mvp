@@ -7,20 +7,27 @@ import DateField, { formatDateDMY } from '../components/DateField';
 
 const blankItem=()=>({product_id:'',bag_size:'20',bags:'',total_kg:'',rate:''});
 const blankCustomer=()=>({name:'',phone:'',address:''});
-
 const balanceLabel=(balance)=>Number(balance)<0?`Advance ${money(Math.abs(balance))}`:`Pending ${money(balance)}`;
 
 export default function Sales(){
- const [customers,setCustomers]=useState([]), [products,setProducts]=useState([]), [sales,setSales]=useState([]), [bill,setBill]=useState('');
- const [customerId,setCustomerId]=useState(''), [customerQuery,setCustomerQuery]=useState(''), [customerOpen,setCustomerOpen]=useState(false);
- const [date,setDate]=useState(today()), [received,setReceived]=useState(''), [remarks,setRemarks]=useState(''), [items,setItems]=useState([blankItem()]);
- const [error,setError]=useState(''), [success,setSuccess]=useState(''), [printSale,setPrintSale]=useState(null);
- const [showAddCustomer,setShowAddCustomer]=useState(false), [newCustomer,setNewCustomer]=useState(blankCustomer());
+ const [customers,setCustomers]=useState([]),[products,setProducts]=useState([]),[bill,setBill]=useState('');
+ const [customerId,setCustomerId]=useState(''),[customerQuery,setCustomerQuery]=useState(''),[customerOpen,setCustomerOpen]=useState(false);
+ const [date,setDate]=useState(today()),[received,setReceived]=useState(''),[remarks,setRemarks]=useState(''),[items,setItems]=useState([blankItem()]);
+ const [error,setError]=useState(''),[success,setSuccess]=useState(''),[printSale,setPrintSale]=useState(null);
+ const [showAddCustomer,setShowAddCustomer]=useState(false),[newCustomer,setNewCustomer]=useState(blankCustomer());
+ const [historyDate,setHistoryDate]=useState(today()),[historyRows,setHistoryRows]=useState([]);
 
- const load=async()=>{try{const [c,p,s,b]=await Promise.all([api.get('/customers'),api.get('/products'),api.get('/sales'),api.get('/sales/next-bill')]);setCustomers(c);setProducts(p.filter(x=>x.name!=='Wheat'));setSales(s);setBill(b.bill_no);}catch(e){setError(e.message)}};
- useEffect(()=>{load()},[]);
+ const loadBase=async()=>{try{const [c,p,b]=await Promise.all([api.get('/customers'),api.get('/products'),api.get('/sales/next-bill')]);setCustomers(c);setProducts(p.filter(x=>x.name!=='Wheat'));setBill(b.bill_no);}catch(e){setError(e.message)}};
+ const loadHistory=async(value=historyDate)=>{try{setHistoryRows(await api.get(value?`/sales?date=${value}`:'/sales'));}catch(e){setError(e.message)}};
+ useEffect(()=>{loadBase();loadHistory(today())},[]);
 
  const total=useMemo(()=>items.reduce((sum,i)=>sum+(Number(i.bags||0)*Number(i.rate||0)),0),[items]);
+ const historySummary=useMemo(()=>({
+   total:historyRows.reduce((s,r)=>s+Number(r.total_amount||0),0),
+   received:historyRows.reduce((s,r)=>s+Number(r.received_amount||0),0),
+   pending:historyRows.reduce((s,r)=>s+Number(r.pending_amount||0),0),
+   bills:historyRows.length
+ }),[historyRows]);
  const selectedCustomer=customers.find(c=>String(c.id)===String(customerId));
  const filteredCustomers=useMemo(()=>{
    const q=customerQuery.trim().toLowerCase();
@@ -49,13 +56,17 @@ export default function Sales(){
    e.preventDefault();setError('');setSuccess('');
    if(!customerId){setError('Please select a customer.');return;}
    try{
-     const result=await api.post('/sales',{bill_no:bill,date,customer_id:customerId,received_amount:received||0,remarks,items});
+     const saleDate=date;
+     const result=await api.post('/sales',{bill_no:bill,date:saleDate,customer_id:customerId,received_amount:received||0,remarks,items});
      const detail=await api.get(`/sales/${result.id}`);setPrintSale(detail);setItems([blankItem()]);setReceived('');setRemarks('');
      const status=Number(result.customer_balance)<0?`Customer advance is ${money(Math.abs(result.customer_balance))}.`:`Customer pending is now ${money(result.customer_balance)}.`;
-     setSuccess(`Sale saved. ${status}`);await load();
+     setSuccess(`Sale saved. ${status}`);await loadBase();
+     if(!historyDate||historyDate===saleDate) await loadHistory(historyDate);
    }catch(e){setError(e.message)}
  };
  const openSale=async id=>{try{setPrintSale(await api.get(`/sales/${id}`));}catch(e){setError(e.message)}};
+ const applyHistoryDate=async next=>{setHistoryDate(next);await loadHistory(next)};
+ const showAll=async()=>{setHistoryDate('');await loadHistory('')};
 
  return <><PageHeader title="Sales / Billing"/>
  <Card><ErrorBox error={error}/><SuccessBox text={success}/><form onSubmit={submit}>
@@ -96,8 +107,18 @@ export default function Sales(){
  <div className="sale-summary"><label>Remarks<input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Optional"/></label><div><span>Total Bill</span><strong>{money(total)}</strong></div><label>Amount Received<input type="number" min="0" max={total||undefined} step="0.01" value={received} onChange={e=>setReceived(e.target.value)}/></label><div><span>Pending on this bill</span><strong>{money(Math.max(0,total-Number(received||0)))}</strong></div></div>
  <div className="actions"><button className="primary">Save Sale</button></div></form></Card>
 
- <Card><h3>Recent Bills</h3>{sales.length?<div className="table-wrap"><table><thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Total</th><th>Received</th><th>Pending</th><th></th></tr></thead><tbody>{sales.slice(0,20).map(s=><tr key={s.id}><td>{s.bill_no}</td><td>{formatDateDMY(s.date)}</td><td>{s.customer_name}</td><td>{money(s.total_amount)}</td><td>{money(s.received_amount)}</td><td>{money(s.pending_amount)}</td><td><button className="link-btn" onClick={()=>openSale(s.id)}><Printer size={15}/> View / Print</button></td></tr>)}</tbody></table></div>:<Empty/>}</Card>
- {showAddCustomer&&<AddCustomerModal customer={newCustomer} setCustomer={setNewCustomer} onClose={()=>setShowAddCustomer(false)} onSave={addCustomer}/>} 
+ <Card className="section-card-below">
+   <div className="history-toolbar"><h3>Sales History</h3><div className="history-filter"><DateField value={historyDate} onChange={applyHistoryDate}/><button type="button" className="secondary" onClick={showAll}>Show All</button></div></div>
+   <div className="history-stats">
+     <div><span>Total Sales</span><strong>{money(historySummary.total)}</strong></div>
+     <div><span>Received</span><strong>{money(historySummary.received)}</strong></div>
+     <div><span>Pending</span><strong>{money(historySummary.pending)}</strong></div>
+     <div><span>Bills</span><strong>{historySummary.bills}</strong></div>
+   </div>
+   {historyRows.length?<div className="table-wrap"><table><thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Total</th><th>Received</th><th>Pending</th><th></th></tr></thead><tbody>{historyRows.map(s=><tr key={s.id}><td>{s.bill_no}</td><td>{formatDateDMY(s.date)}</td><td>{s.customer_name}</td><td>{money(s.total_amount)}</td><td>{money(s.received_amount)}</td><td>{money(s.pending_amount)}</td><td><button className="link-btn" onClick={()=>openSale(s.id)}><Printer size={15}/> View / Print</button></td></tr>)}</tbody></table></div>:<Empty/>}
+ </Card>
+
+ {showAddCustomer&&<AddCustomerModal customer={newCustomer} setCustomer={setNewCustomer} onClose={()=>setShowAddCustomer(false)} onSave={addCustomer}/>}
  {printSale&&<Invoice sale={printSale} onClose={()=>setPrintSale(null)}/>}</>;
 }
 

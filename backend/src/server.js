@@ -376,15 +376,20 @@ app.post('/api/source-payments', (req, res) => {
 });
 
 app.get('/api/wheat-in', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
-  res.json(db.prepare(`
+  const date = String(req.query.date || '').trim();
+  const baseSql = `
     SELECT w.*, COALESCE(s.name,w.source_name) AS source_name,
            COALESCE(s.source_type,w.source_type) AS source_type,
            ROUND(w.total_cost + COALESCE(w.bardana_cost,0),2) AS purchase_total
     FROM wheat_in w
     LEFT JOIN sources s ON s.id=w.source_id
-    ORDER BY w.date DESC, w.id DESC LIMIT ?
-  `).all(limit));
+  `;
+  if (date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Date must be YYYY-MM-DD' });
+    return res.json(db.prepare(`${baseSql} WHERE w.date=? ORDER BY w.id DESC`).all(date));
+  }
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  res.json(db.prepare(`${baseSql} ORDER BY w.date DESC, w.id DESC LIMIT ?`).all(limit));
 });
 
 app.post('/api/wheat-in', (req, res) => {
@@ -426,12 +431,17 @@ app.post('/api/wheat-in', (req, res) => {
 });
 
 app.get('/api/bardana-purchases', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
-  res.json(db.prepare(`
+  const date = String(req.query.date || '').trim();
+  const baseSql = `
     SELECT b.*, s.name AS source_name, s.source_type
     FROM bardana_purchases b JOIN sources s ON s.id=b.source_id
-    ORDER BY b.date DESC, b.id DESC LIMIT ?
-  `).all(limit));
+  `;
+  if (date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Date must be YYYY-MM-DD' });
+    return res.json(db.prepare(`${baseSql} WHERE b.date=? ORDER BY b.id DESC`).all(date));
+  }
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  res.json(db.prepare(`${baseSql} ORDER BY b.date DESC, b.id DESC LIMIT ?`).all(limit));
 });
 
 app.post('/api/bardana-purchases', (req, res) => {
@@ -533,12 +543,17 @@ const nextBillNo = () => {
 app.get('/api/sales/next-bill', (_req, res) => res.json({ bill_no: nextBillNo() }));
 
 app.get('/api/sales', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
-  res.json(db.prepare(`
+  const date = String(req.query.date || '').trim();
+  const baseSql = `
     SELECT s.*, c.name AS customer_name
     FROM sales s JOIN customers c ON c.id=s.customer_id
-    ORDER BY s.date DESC, s.id DESC LIMIT ?
-  `).all(limit));
+  `;
+  if (date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Date must be YYYY-MM-DD' });
+    return res.json(db.prepare(`${baseSql} WHERE s.date=? ORDER BY s.id DESC`).all(date));
+  }
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  res.json(db.prepare(`${baseSql} ORDER BY s.date DESC, s.id DESC LIMIT ?`).all(limit));
 });
 
 app.get('/api/sales/:id', (req, res) => {

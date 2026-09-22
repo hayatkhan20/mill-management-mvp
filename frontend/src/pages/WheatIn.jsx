@@ -8,7 +8,7 @@ import DateField, { formatDateDMY } from '../components/DateField';
 const initial=()=>({date:today(),source_id:'',bags:'',total_kg:'',rate_per_kg:'',bardana_rate_per_bag:'',remarks:''});
 const blankSource=()=>({name:'',source_type:'Private',phone:'',address:''});
 
-export default function WheatIn(){
+export default function WheatIn({showHistory=true}){
  const [form,setForm]=useState(initial()),[sources,setSources]=useState([]),[rows,setRows]=useState([]),[error,setError]=useState(''),[success,setSuccess]=useState('');
  const [showAddSource,setShowAddSource]=useState(false),[newSource,setNewSource]=useState(blankSource());
  const load=async()=>{try{const [s,w]=await Promise.all([api.get('/sources'),api.get('/wheat-in')]);setSources(s);setRows(w)}catch(e){setError(e.message)}};
@@ -41,9 +41,9 @@ export default function WheatIn(){
     <div className="span-2"><button className="primary">Save Wheat Purchase</button></div>
    </form></Card>
 
-   <Card className="section-card-below"><h3>Recent Wheat Purchases</h3>{rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Bags</th><th>Wheat KG</th><th>Wheat Cost</th><th>Bardana Cost</th><th>Total</th></tr></thead><tbody>
+   {showHistory&&<Card className="section-card-below"><h3>Recent Wheat Purchases</h3>{rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Bags</th><th>Wheat KG</th><th>Wheat Cost</th><th>Bardana Cost</th><th>Total</th></tr></thead><tbody>
     {rows.slice(0,15).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td><strong>{r.source_name}</strong><small>{r.source_type}</small></td><td>{num(r.bags)}</td><td>{num(r.total_kg)}</td><td>{money(r.total_cost)}</td><td>{money(r.bardana_cost)}</td><td><strong>{money(r.purchase_total)}</strong></td></tr>)}
-   </tbody></table></div>:<Empty/>}</Card>
+   </tbody></table></div>:<Empty/>}</Card>}
   </div>
   {showAddSource&&<div className="modal"><div className="add-customer-modal">
    <div className="modal-title-row"><div><h2>Add Source</h2></div><button type="button" className="secondary" onClick={()=>setShowAddSource(false)}>Cancel</button></div>

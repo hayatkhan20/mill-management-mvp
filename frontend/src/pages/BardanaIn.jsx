@@ -6,7 +6,7 @@ import DateField, { formatDateDMY } from '../components/DateField';
 
 const initial=()=>({date:today(),source_id:'',quantity:'',rate_per_bag:'',remarks:''});
 
-export default function BardanaIn(){
+export default function BardanaIn({showHistory=true}){
  const [form,setForm]=useState(initial()),[sources,setSources]=useState([]),[rows,setRows]=useState([]),[error,setError]=useState(''),[success,setSuccess]=useState('');
  const load=async()=>{try{const [s,b]=await Promise.all([api.get('/sources'),api.get('/bardana-purchases')]);setSources(s);setRows(b)}catch(e){setError(e.message)}};
  useEffect(()=>{load()},[]);
@@ -26,9 +26,9 @@ export default function BardanaIn(){
     <div className="span-2"><button className="primary">Save Bardana Purchase</button></div>
    </form></Card>
 
-   <Card className="section-card-below"><h3>Recent Bardana Purchases</h3>{rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Bags</th><th>Rate/Bag</th><th>Total</th></tr></thead><tbody>
+   {showHistory&&<Card className="section-card-below"><h3>Recent Bardana Purchases</h3>{rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Bags</th><th>Rate/Bag</th><th>Total</th></tr></thead><tbody>
     {rows.slice(0,15).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td><strong>{r.source_name}</strong><small>{r.source_type}</small></td><td>{num(r.quantity)}</td><td>{money(r.rate_per_bag)}</td><td>{money(r.total_cost)}</td></tr>)}
-   </tbody></table></div>:<Empty/>}</Card>
+   </tbody></table></div>:<Empty/>}</Card>}
   </div>
  </>;
 }
