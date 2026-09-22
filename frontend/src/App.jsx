@@ -10,6 +10,7 @@ import Stock from './pages/Stock';
 import Appendix from './pages/Appendix';
 import Expenses from './pages/Expenses';
 import Settings from './pages/Settings';
+import { UiPreferencesProvider } from './context/UiPreferences';
 
 const pages={
   dashboard:Dashboard,
@@ -27,5 +28,5 @@ const pages={
 export default function App(){
   const [page,setPage]=useState('dashboard');
   const Page=pages[page];
-  return <Layout page={page} setPage={setPage}><Page key={page}/></Layout>;
+  return <UiPreferencesProvider><Layout page={page} setPage={setPage}><Page key={page}/></Layout></UiPreferencesProvider>;
 }
