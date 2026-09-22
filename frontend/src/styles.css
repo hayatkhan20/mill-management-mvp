@@ -128,3 +128,11 @@
 :root[dir="rtl"] .invoice-meta{text-align:left}
 
 @media(max-width:760px){.preferences-grid{grid-template-columns:1fr}}
+
+:root[dir="rtl"] .app-shell{direction:ltr}
+:root[dir="rtl"] .sidebar,
+:root[dir="rtl"] .main-area{direction:rtl}
+:root[dir="rtl"] .main-area{margin-left:235px;margin-right:0}
+@media(max-width:760px){
+  :root[dir="rtl"] .main-area{margin-left:68px;margin-right:0}
+}
