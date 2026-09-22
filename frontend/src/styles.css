@@ -61,3 +61,70 @@
 }
 
 @media(max-width:1100px){.history-stats,.purchase-history-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* Preferences */
+.preferences-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.preference-block{display:grid;gap:10px}
+.preference-options{display:flex;gap:10px;flex-wrap:wrap}
+.preference-option{border:1px solid #ccd8d1;background:#fff;color:#203129;border-radius:10px;padding:12px 16px;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.preference-option.active{border-color:#1f5b42;background:#edf6f1;color:#1f5b42;font-weight:700}
+
+/* Dark mode */
+:root[data-theme="dark"]{color-scheme:dark;background:#101714}
+:root[data-theme="dark"] body{background:#101714;color:#e7eee9}
+:root[data-theme="dark"] .main-area{background:#101714}
+:root[data-theme="dark"] .topbar{background:#16201b;border-color:#2a3831}
+:root[data-theme="dark"] .topbar h1{color:#f0f5f2}
+:root[data-theme="dark"] .content{color:#e7eee9}
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .invoice-modal,
+:root[data-theme="dark"] .customer-modal,
+:root[data-theme="dark"] .add-customer-modal{background:#18231e;border-color:#2d3d35;color:#e7eee9;box-shadow:none}
+:root[data-theme="dark"] input,
+:root[data-theme="dark"] select,
+:root[data-theme="dark"] textarea{background:#111a16;border-color:#3a4c43;color:#eef4f0}
+:root[data-theme="dark"] input:disabled,
+:root[data-theme="dark"] input[readonly]{background:#202b26;color:#aebdb5}
+:root[data-theme="dark"] label,
+:root[data-theme="dark"] .field-label{color:#c5d2cb}
+:root[data-theme="dark"] small,
+:root[data-theme="dark"] .stat-label,
+:root[data-theme="dark"] .section-title span,
+:root[data-theme="dark"] .sale-summary span,
+:root[data-theme="dark"] .history-stats span{color:#9fb0a7}
+:root[data-theme="dark"] th{background:#202b26;color:#b7c7be}
+:root[data-theme="dark"] td{border-color:#2a3932}
+:root[data-theme="dark"] .clickable:hover,
+:root[data-theme="dark"] .customer-option:hover{background:#223029}
+:root[data-theme="dark"] .secondary,
+:root[data-theme="dark"] .date-picker-btn,
+:root[data-theme="dark"] .icon-btn{background:#25352d;color:#dce8e1}
+:root[data-theme="dark"] .secondary:hover{background:#30453a}
+:root[data-theme="dark"] .sale-summary,
+:root[data-theme="dark"] .history-stats>div,
+:root[data-theme="dark"] .quantities span{background:#202b26;border-color:#2f4037}
+:root[data-theme="dark"] .customer-results{background:#18231e;border-color:#3a4c43;box-shadow:0 10px 28px rgba(0,0,0,.35)}
+:root[data-theme="dark"] .customer-option{background:#18231e;color:#edf4f0}
+:root[data-theme="dark"] .note-card{background:#332b18;border-color:#584a26;color:#ead9a6}
+:root[data-theme="dark"] .alert.error{background:#351d1d;border-color:#633131;color:#ffbcbc}
+:root[data-theme="dark"] .alert.success{background:#173324;border-color:#27563b;color:#bce8cb}
+:root[data-theme="dark"] .preference-option{background:#111a16;border-color:#3a4c43;color:#e7eee9}
+:root[data-theme="dark"] .preference-option.active{background:#244334;border-color:#4c8a69;color:#e8f5ed}
+:root[data-theme="dark"] .modal{background:rgba(0,0,0,.68)}
+:root[data-theme="dark"] .invoice{color:#111;background:#fff}
+:root[data-theme="dark"] .table-wrap{scrollbar-color:#435a4e #18231e}
+
+/* Urdu / RTL */
+:root[dir="rtl"] body{font-family:"Segoe UI",Tahoma,Arial,sans-serif}
+:root[dir="rtl"] .sidebar{inset:0 auto 0 0}
+:root[dir="rtl"] .sidebar nav button{text-align:right}
+:root[dir="rtl"] .section-title,
+:root[dir="rtl"] .history-toolbar,
+:root[dir="rtl"] .invoice-head{direction:rtl}
+:root[dir="rtl"] th{text-align:right}
+:root[dir="rtl"] .customer-search-icon{left:auto;right:12px}
+:root[dir="rtl"] .customer-search-wrap>input{padding-left:11px;padding-right:38px}
+:root[dir="rtl"] .invoice-meta{text-align:left}
+
+@media(max-width:760px){.preferences-grid{grid-template-columns:1fr}}
