@@ -12,7 +12,6 @@ export default function Appendix(){
  },[date]);
 
  return <>
-  <PageHeader title="Appendix"/>
   <ErrorBox error={error}/>
   <Card>
    <div className="section-title"><h3>Daily Record</h3><DateField value={date} onChange={setDate}/></div>
