@@ -14,7 +14,7 @@ export default function Stock(){
  const wheat=monthly?.rows?.find(r=>r.name==='Wheat');
 
  return <>
-  <PageHeader title="Stock"/><ErrorBox error={error}/>
+  <ErrorBox error={error}/>
   <div className="two-col">
    <Card><div className="section-title"><h3>Monthly Wheat Summary</h3><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>
     <div className="table-wrap"><table><thead><tr><th>Opening Wheat</th><th>Total Wheat In</th><th>Used / Ground</th><th>Current Wheat</th></tr></thead><tbody><tr><td>{num(wheat?.opening)} KG</td><td>{num(wheat?.in_qty)} KG</td><td>{num(wheat?.out_qty)} KG</td><td><strong>{num(wheat?.closing)} KG</strong></td></tr></tbody></table></div>

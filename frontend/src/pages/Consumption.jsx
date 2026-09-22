@@ -32,7 +32,6 @@ export default function Consumption(){
   };
 
   return <>
-    <PageHeader title="Consumption"/>
     <div className="two-col">
       <Card>
         <h3>New Stock Out Entry</h3>

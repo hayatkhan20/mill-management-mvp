@@ -49,7 +49,6 @@ export default function Expenses(){
  };
 
  return <>
-  <PageHeader title="Expenses"/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
 
   <Card>

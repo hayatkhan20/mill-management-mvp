@@ -68,7 +68,7 @@ export default function Sales(){
  const applyHistoryDate=async next=>{setHistoryDate(next);await loadHistory(next)};
  const showAll=async()=>{setHistoryDate('');await loadHistory('')};
 
- return <><PageHeader title="Sales / Billing"/>
+ return <>
  <Card><ErrorBox error={error}/><SuccessBox text={success}/><form onSubmit={submit}>
  <div className="form-grid sales-head">
    <label>Bill No.<input value={bill} readOnly/></label>
