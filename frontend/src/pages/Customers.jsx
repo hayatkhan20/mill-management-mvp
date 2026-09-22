@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useUiPreferences } from '../context/UiPreferences';
 import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { money, num, today } from '../utils';
@@ -7,6 +8,7 @@ import DateField, { formatDateDMY } from '../components/DateField';
 const balanceText=(value)=>Number(value)<0?`Advance ${money(Math.abs(value))}`:`${money(value)}`;
 
 export default function Customers(){
+ const {t}=useUiPreferences();
  const [rows,setRows]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState(''),[success,setSuccess]=useState('');
  const [search,setSearch]=useState('');
  const [editing,setEditing]=useState(false);
@@ -25,11 +27,11 @@ export default function Customers(){
  const filteredRows=rows.filter(r=>{const q=search.trim().toLowerCase();if(!q)return true;return [r.name,r.phone,r.address].some(value=>String(value||'').toLowerCase().includes(q))});
 
  return <>
-  <PageHeader title="Customers"/>
+  <PageHeader title={t('customers','Customers')}/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
   <div>
-   <Card><h3>Add Customer</h3><form className="form-grid" onSubmit={add}><label className="span-2">Name<input required value={newCustomer.name} onChange={e=>setNewCustomer({...newCustomer,name:e.target.value})}/></label><label>Phone<input value={newCustomer.phone} onChange={e=>setNewCustomer({...newCustomer,phone:e.target.value})}/></label><label>Address<input value={newCustomer.address} onChange={e=>setNewCustomer({...newCustomer,address:e.target.value})}/></label><div className="span-2"><button className="primary">Add Customer</button></div></form></Card>
-   <Card className="section-card-below"><h3>Customer Accounts</h3><input aria-label="Search customers" placeholder="Search by name, phone or address" value={search} onChange={e=>setSearch(e.target.value)}/>{filteredRows.length?<div className="table-wrap"><table><thead><tr><th>Customer</th><th>Purchased</th><th>Paid</th><th>Balance</th></tr></thead><tbody>{filteredRows.map(r=><tr className="clickable" key={r.id} onClick={()=>open(r.id)}><td><strong>{r.name}</strong><small>{r.phone}</small></td><td>{money(r.total_purchased)}</td><td>{money(r.total_paid)}</td><td className={r.balance>0?'pending':r.balance<0?'advance':''}>{balanceText(r.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
+   <Card><h3>{t('addCustomer','Add Customer')}</h3><form className="form-grid" onSubmit={add}><label className="span-2">{t('name','Name')}<input required value={newCustomer.name} onChange={e=>setNewCustomer({...newCustomer,name:e.target.value})}/></label><label>{t('phone','Phone')}<input value={newCustomer.phone} onChange={e=>setNewCustomer({...newCustomer,phone:e.target.value})}/></label><label>{t('address','Address')}<input value={newCustomer.address} onChange={e=>setNewCustomer({...newCustomer,address:e.target.value})}/></label><div className="span-2"><button className="primary">{t('addCustomer','Add Customer')}</button></div></form></Card>
+   <Card className="section-card-below"><h3>{t('customerAccounts','Customer Accounts')}</h3><input aria-label="Search customers" placeholder={t('searchCustomers','Search by name, phone or address')} value={search} onChange={e=>setSearch(e.target.value)}/>{filteredRows.length?<div className="table-wrap"><table><thead><tr><th>{t('customer','Customer')}</th><th>{t('purchased','Purchased')}</th><th>{t('paid','Paid')}</th><th>{t('balance','Balance')}</th></tr></thead><tbody>{filteredRows.map(r=><tr className="clickable" key={r.id} onClick={()=>open(r.id)}><td><strong>{r.name}</strong><small>{r.phone}</small></td><td>{money(r.total_purchased)}</td><td>{money(r.total_paid)}</td><td className={r.balance>0?'pending':r.balance<0?'advance':''}>{balanceText(r.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
   </div>
 
   {selected&&<div className="modal"><div className="customer-modal">

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useUiPreferences } from '../context/UiPreferences';
 import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { money, num, today } from '../utils';
@@ -10,6 +11,7 @@ const blankCustomer=()=>({name:'',phone:'',address:''});
 const balanceLabel=(balance)=>Number(balance)<0?`Advance ${money(Math.abs(balance))}`:`Pending ${money(balance)}`;
 
 export default function Sales(){
+ const {t}=useUiPreferences();
  const [customers,setCustomers]=useState([]),[products,setProducts]=useState([]),[bill,setBill]=useState('');
  const [customerId,setCustomerId]=useState(''),[customerQuery,setCustomerQuery]=useState(''),[customerOpen,setCustomerOpen]=useState(false);
  const [date,setDate]=useState(today()),[received,setReceived]=useState(''),[remarks,setRemarks]=useState(''),[items,setItems]=useState([blankItem()]);
@@ -71,14 +73,14 @@ export default function Sales(){
  return <>
  <Card><ErrorBox error={error}/><SuccessBox text={success}/><form onSubmit={submit}>
  <div className="form-grid sales-head">
-   <label>Bill No.<input value={bill} readOnly/></label>
-   <label>Date (DD/MM/YYYY)<DateField required value={date} onChange={setDate}/></label>
+   <label>{t('billNo','Bill No.')}<input value={bill} readOnly/></label>
+   <label>{t('date','Date')} (DD/MM/YYYY)<DateField required value={date} onChange={setDate}/></label>
    <div className="span-2 customer-field">
-     <span className="field-label">Customer</span>
+     <span className="field-label">{t('customer','Customer')}</span>
      <div className="customer-picker-row">
        <div className="customer-search-wrap">
          <Search size={17} className="customer-search-icon"/>
-         <input value={customerQuery} placeholder="Search customer by name or phone" autoComplete="off" onFocus={()=>setCustomerOpen(true)} onChange={e=>{setCustomerQuery(e.target.value);setCustomerId('');setCustomerOpen(true)}} onBlur={()=>setTimeout(()=>setCustomerOpen(false),120)}/>
+         <input value={customerQuery} placeholder={t('search','Search customer by name or phone')} autoComplete="off" onFocus={()=>setCustomerOpen(true)} onChange={e=>{setCustomerQuery(e.target.value);setCustomerId('');setCustomerOpen(true)}} onBlur={()=>setTimeout(()=>setCustomerOpen(false),120)}/>
          {customerOpen&&<div className="customer-results">
            {filteredCustomers.length?filteredCustomers.map(c=><button type="button" className="customer-option" key={c.id} onMouseDown={e=>e.preventDefault()} onClick={()=>chooseCustomer(c)}>
              <span><strong>{c.name}</strong>{c.phone&&<small>{c.phone}</small>}</span>
@@ -92,7 +94,7 @@ export default function Sales(){
    </div>
  </div>
 
- <div className="sale-items"><div className="sale-row sale-row-head"><span>Product</span><span>Bag Size</span><span>Bags</span><span>Total KG</span><span>Rate / Bag</span><span>Amount</span><span></span></div>
+ <div className="sale-items"><div className="sale-row sale-row-head"><span>{t('product','Product')}</span><span>{t('bagSize','Bag Size')}</span><span>{t('bags','Bags')}</span><span>{t('totalKg','Total KG')}</span><span>{t('ratePerBag','Rate / Bag')}</span><span>{t('amount','Amount')}</span><span></span></div>
  {items.map((it,idx)=><div className="sale-row" key={idx}>
    <select required value={it.product_id} onChange={e=>updateItem(idx,'product_id',e.target.value)}><option value="">Product</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select>
    <select required value={it.bag_size} onChange={e=>updateItem(idx,'bag_size',e.target.value)}><option value="20">20 KG</option><option value="40">40 KG</option></select>
@@ -104,18 +106,18 @@ export default function Sales(){
  </div>)}
  <button type="button" className="secondary small" onClick={()=>setItems([...items,blankItem()])}><Plus size={16}/> Add Item</button></div>
 
- <div className="sale-summary"><label>Remarks<input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Optional"/></label><div><span>Total Bill</span><strong>{money(total)}</strong></div><label>Amount Received<input type="number" min="0" max={total||undefined} step="0.01" value={received} onChange={e=>setReceived(e.target.value)}/></label><div><span>Pending on this bill</span><strong>{money(Math.max(0,total-Number(received||0)))}</strong></div></div>
- <div className="actions"><button className="primary">Save Sale</button></div></form></Card>
+ <div className="sale-summary"><label>{t('remarks','Remarks')}<input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Optional"/></label><div><span>{t('total','Total')}</span><strong>{money(total)}</strong></div><label>{t('amountReceived','Amount Received')}<input type="number" min="0" max={total||undefined} step="0.01" value={received} onChange={e=>setReceived(e.target.value)}/></label><div><span>{t('pendingThisBill','Pending on this bill')}</span><strong>{money(Math.max(0,total-Number(received||0)))}</strong></div></div>
+ <div className="actions"><button className="primary">{t('saveSale','Save Sale')}</button></div></form></Card>
 
  <Card className="section-card-below">
-   <div className="history-toolbar"><h3>Sales History</h3><div className="history-filter"><DateField value={historyDate} onChange={applyHistoryDate}/><button type="button" className="secondary" onClick={showAll}>Show All</button></div></div>
+   <div className="history-toolbar"><h3>{t('salesHistory','Sales History')}</h3><div className="history-filter"><DateField value={historyDate} onChange={applyHistoryDate}/><button type="button" className="secondary" onClick={showAll}>{t('showAll','Show All')}</button></div></div>
    <div className="history-stats">
-     <div><span>Total Sales</span><strong>{money(historySummary.total)}</strong></div>
-     <div><span>Received</span><strong>{money(historySummary.received)}</strong></div>
-     <div><span>Pending</span><strong>{money(historySummary.pending)}</strong></div>
-     <div><span>Bills</span><strong>{historySummary.bills}</strong></div>
+     <div><span>{t('totalSales','Total Sales')}</span><strong>{money(historySummary.total)}</strong></div>
+     <div><span>{t('received','Received')}</span><strong>{money(historySummary.received)}</strong></div>
+     <div><span>{t('pending','Pending')}</span><strong>{money(historySummary.pending)}</strong></div>
+     <div><span>{t('bills','Bills')}</span><strong>{historySummary.bills}</strong></div>
    </div>
-   {historyRows.length?<div className="table-wrap"><table><thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Total</th><th>Received</th><th>Pending</th><th></th></tr></thead><tbody>{historyRows.map(s=><tr key={s.id}><td>{s.bill_no}</td><td>{formatDateDMY(s.date)}</td><td>{s.customer_name}</td><td>{money(s.total_amount)}</td><td>{money(s.received_amount)}</td><td>{money(s.pending_amount)}</td><td><button className="link-btn" onClick={()=>openSale(s.id)}><Printer size={15}/> View / Print</button></td></tr>)}</tbody></table></div>:<Empty/>}
+   {historyRows.length?<div className="table-wrap"><table><thead><tr><th>{t('billNo','Bill')}</th><th>{t('date','Date')}</th><th>{t('customer','Customer')}</th><th>{t('total','Total')}</th><th>{t('received','Received')}</th><th>{t('pending','Pending')}</th><th></th></tr></thead><tbody>{historyRows.map(s=><tr key={s.id}><td>{s.bill_no}</td><td>{formatDateDMY(s.date)}</td><td>{s.customer_name}</td><td>{money(s.total_amount)}</td><td>{money(s.received_amount)}</td><td>{money(s.pending_amount)}</td><td><button className="link-btn" onClick={()=>openSale(s.id)}><Printer size={15}/> View / Print</button></td></tr>)}</tbody></table></div>:<Empty/>}
  </Card>
 
  {showAddCustomer&&<AddCustomerModal customer={newCustomer} setCustomer={setNewCustomer} onClose={()=>setShowAddCustomer(false)} onSave={addCustomer}/>}

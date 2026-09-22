@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useUiPreferences } from '../context/UiPreferences';
 import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { money, num, today } from '../utils';
@@ -13,6 +14,7 @@ const balanceLabel=(value)=>{
 };
 
 export default function Sources(){
+ const {t}=useUiPreferences();
  const [rows,setRows]=useState([]),[selected,setSelected]=useState(null),[search,setSearch]=useState('');
  const [newSource,setNewSource]=useState(blankSource()),[editing,setEditing]=useState(false),[editSource,setEditSource]=useState(blankSource());
  const [payment,setPayment]=useState({date:today(),amount:'',note:''}),[error,setError]=useState(''),[success,setSuccess]=useState('');
@@ -32,19 +34,19 @@ export default function Sources(){
  });
 
  return <>
-  <PageHeader title="Sources"/>
+  <PageHeader title={t('sources','Sources')}/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
   <div>
-   <Card><h3>Add Source</h3><form className="form-grid" onSubmit={add}>
-    <label className="span-2">Name<input required value={newSource.name} onChange={e=>setNewSource({...newSource,name:e.target.value})}/></label>
-    <label>Type<select value={newSource.source_type} onChange={e=>setNewSource({...newSource,source_type:e.target.value})}><option>Private</option><option>Government</option></select></label>
-    <label>Phone<input value={newSource.phone} onChange={e=>setNewSource({...newSource,phone:e.target.value})}/></label>
-    <label className="span-2">Address<input value={newSource.address} onChange={e=>setNewSource({...newSource,address:e.target.value})}/></label>
-    <div className="span-2"><button className="primary">Add Source</button></div>
+   <Card><h3>{t('addSource','Add Source')}</h3><form className="form-grid" onSubmit={add}>
+    <label className="span-2">{t('name','Name')}<input required value={newSource.name} onChange={e=>setNewSource({...newSource,name:e.target.value})}/></label>
+    <label>{t('type','Type')}<select value={newSource.source_type} onChange={e=>setNewSource({...newSource,source_type:e.target.value})}><option>Private</option><option>Government</option></select></label>
+    <label>{t('phone','Phone')}<input value={newSource.phone} onChange={e=>setNewSource({...newSource,phone:e.target.value})}/></label>
+    <label className="span-2">{t('address','Address')}<input value={newSource.address} onChange={e=>setNewSource({...newSource,address:e.target.value})}/></label>
+    <div className="span-2"><button className="primary">{t('addSource','Add Source')}</button></div>
    </form></Card>
 
-   <Card className="section-card-below"><h3>Source Accounts</h3><input placeholder="Search by name, type, phone or address" value={search} onChange={e=>setSearch(e.target.value)}/>
-    {filtered.length?<div className="table-wrap"><table><thead><tr><th>Source</th><th>Purchased</th><th>Paid</th><th>Balance</th></tr></thead><tbody>
+   <Card className="section-card-below"><h3>{t('sourceAccounts','Source Accounts')}</h3><input placeholder={t('searchSources','Search by name, type, phone or address')} value={search} onChange={e=>setSearch(e.target.value)}/>
+    {filtered.length?<div className="table-wrap"><table><thead><tr><th>{t('source','Source')}</th><th>{t('purchased','Purchased')}</th><th>{t('paid','Paid')}</th><th>{t('balance','Balance')}</th></tr></thead><tbody>
      {filtered.map(r=><tr className="clickable" key={r.id} onClick={()=>open(r.id)}><td><strong>{r.name}</strong><small>{r.source_type}{r.phone?` • ${r.phone}`:''}</small></td><td>{money(r.total_purchased)}</td><td>{money(r.total_paid)}</td><td className={Number(r.balance)>0?'pending':''}>{balanceLabel(r.balance)}</td></tr>)}
     </tbody></table></div>:<Empty/>}
    </Card>
