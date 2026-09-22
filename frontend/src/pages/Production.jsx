@@ -49,8 +49,6 @@ export default function Production(){
   };
 
   return <>
-    <PageHeader title="Production Record"/>
-    
     <Card>
       <h3>New Production Entry</h3>
       <ErrorBox error={error}/><SuccessBox text={success}/>
