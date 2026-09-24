@@ -47,7 +47,7 @@ export default function Customers(){
     <Card><div className="stat-label">{selected.balance<0?'Current Advance':'Current Pending'}</div><div className={`stat-value ${selected.balance<0?'advance':''}`}>{money(Math.abs(selected.balance))}</div></Card>
    </div>
 
-   <div className="quantities">{selected.quantities.map(q=><span key={q.product}>{q.product}: <strong>{num(q.kg)} KG</strong></span>)}</div>
+   <div className="quantities">{selected.quantities.map(q=><span key={q.product}>{q.product}: <strong>{num(q.quantity)} {q.unit}</strong></span>)}</div>
 
    <Card><h3>{editingPaymentId?'Edit Payment':'Receive Payment / Advance'}</h3><form className="form-inline" onSubmit={pay}><DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/><input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/><input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/><button className="primary">{editingPaymentId?'Save':'Receive'}</button>{editingPaymentId&&<button type="button" className="secondary" onClick={()=>{setEditingPaymentId(null);setPayment({date:today(),amount:'',note:''})}}>Cancel</button>}</form></Card>
 
