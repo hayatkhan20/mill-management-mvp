@@ -800,12 +800,13 @@ app.post('/api/sales/:id/update', (req,res)=>{
     const saleId=asNumber(req.params.id,'Sale',{min:1,allowZero:false});
     const existing=db.prepare('SELECT * FROM sales WHERE id=?').get(saleId);
     if(!existing) return res.status(404).json({error:'Sale not found'});
+
     const date=req.body.date||existing.date;
     const customerId=asNumber(req.body.customer_id,'Customer',{min:1,allowZero:false});
     if(!db.prepare('SELECT id FROM customers WHERE id=?').get(customerId)) throw new Error('Customer not found');
     if(!Array.isArray(req.body.items)||!req.body.items.length) throw new Error('Add at least one sale item');
 
-    const normalizedItems = req.body.items.map((item,index)=>{
+    const normalizedItems=req.body.items.map((item,index)=>{
       const productId=asNumber(item.product_id,`Item ${index+1} product`,{min:1,allowZero:false});
       const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
       if(!product) throw new Error(`Item ${index+1}: select an active product`);
@@ -825,35 +826,64 @@ app.post('/api/sales/:id/update', (req,res)=>{
       return {product,productId,mode:'bag',bagSize,bags,totalKg,rate,amount:round2(bags*rate)};
     });
 
-    const requestedByProduct=new Map(); let bardanaRequested=0;
+    const totalAmount=round2(normalizedItems.reduce((sum,item)=>sum+item.amount,0));
+    const received=round2(asNumber(req.body.received_amount??0,'Amount received'));
+    if(received>totalAmount+0.001) throw new Error('Amount received cannot exceed bill total.');
+    const pending=round2(totalAmount-received);
+    const remarks=String(req.body.remarks??'').trim();
+
+    db.transaction(()=>{
+      // Remove the old stock effects first so this sale's previous quantity is restored.
+      db.prepare("DELETE FROM stock_movements WHERE reference_type='sale' AND reference_id=?").run(saleId);
+      db.prepare("DELETE FROM bardana_movements WHERE reference_type='sale_bardana' AND reference_id=?").run(saleId);
+
+      const requestedByProduct=new Map();
+      let bardanaRequested=0;
       for(const item of normalizedItems){
         if(item.mode==='bardana') bardanaRequested+=item.bags;
         else requestedByProduct.set(item.productId,(requestedByProduct.get(item.productId)||0)+item.totalKg);
       }
+
       for(const [productId,qty] of requestedByProduct){
         const stock=currentProductStock(productId);
         if(qty>stock+0.001){
-          const p=db.prepare('SELECT name FROM products WHERE id=?').get(productId);
-          throw new Error(`${p.name} sale exceeds current stock`);
+          const product=db.prepare('SELECT name FROM products WHERE id=?').get(productId);
+          throw new Error(`${product.name} sale exceeds current stock`);
         }
       }
-      if(bardanaRequested>bardanaStock().current+0.001) throw new Error('Bardana sale exceeds current stock');
+
+      const currentBardana=bardanaStock().current;
+      if(bardanaRequested>currentBardana+0.001) throw new Error('Bardana sale exceeds current stock');
 
       db.prepare('DELETE FROM sale_items WHERE sale_id=?').run(saleId);
       db.prepare('UPDATE sales SET date=?,customer_id=?,total_amount=?,received_amount=?,pending_amount=?,remarks=? WHERE id=?')
         .run(date,customerId,totalAmount,received,pending,remarks,saleId);
+
       const insertItem=db.prepare(`INSERT INTO sale_items (sale_id,product_id,bag_size,bags,total_kg,rate,amount) VALUES (?,?,?,?,?,?,?)`);
       const insertStock=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
       const insertBardana=db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?)`);
+
       for(const item of normalizedItems){
         insertItem.run(saleId,item.productId,item.bagSize,item.bags,item.totalKg,item.rate,item.amount);
-        if(item.mode==='bardana') insertBardana.run(date,-item.bags,'OUT','sale_bardana',saleId,`Bardana sold on ${existing.bill_no}`);
-        else insertStock.run(date,item.productId,-item.totalKg,'OUT','sale',saleId,`${item.product.name} sold on ${existing.bill_no}`);
+        if(item.mode==='bardana'){
+          insertBardana.run(date,-item.bags,'OUT','sale_bardana',saleId,`Bardana sold on ${existing.bill_no}`);
+        }else{
+          insertStock.run(date,item.productId,-item.totalKg,'OUT','sale',saleId,`${item.product.name} sold on ${existing.bill_no}`);
+        }
       }
     })();
 
-    res.json({id:saleId,bill_no:existing.bill_no,total_amount:totalAmount,received_amount:received,pending_amount:pending,customer_balance:customerBalance(customerId)});
-  }catch(e){res.status(400).json({error:e.message})}
+    res.json({
+      id:saleId,
+      bill_no:existing.bill_no,
+      total_amount:totalAmount,
+      received_amount:received,
+      pending_amount:pending,
+      customer_balance:customerBalance(customerId)
+    });
+  }catch(e){
+    res.status(400).json({error:e.message});
+  }
 });
 
 app.get('/api/consumption', (req, res) => {
