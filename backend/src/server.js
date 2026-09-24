@@ -110,7 +110,7 @@ app.get('/api/dashboard', (_req, res) => {
     SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
     FROM products p
     LEFT JOIN stock_movements sm ON sm.product_id = p.id
-    WHERE p.is_active=1
+    WHERE p.is_active=1 AND p.name<>'Bardana'
     GROUP BY p.id, p.name
     ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all();
@@ -944,7 +944,7 @@ app.get('/api/stock/current', (_req, res) => {
   const rows = db.prepare(`
     SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
     FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    WHERE p.is_active=1
+    WHERE p.is_active=1 AND p.name<>'Bardana'
     GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all();
   res.json(rows);
@@ -959,7 +959,7 @@ app.get('/api/stock/daily', (req, res) => {
       ROUND(ABS(COALESCE(SUM(CASE WHEN sm.date = ? AND sm.qty_kg < 0 THEN sm.qty_kg ELSE 0 END),0)),2) AS out_qty,
       ROUND(COALESCE(SUM(CASE WHEN sm.date <= ? THEN sm.qty_kg ELSE 0 END),0),2) AS closing
     FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    WHERE p.is_active=1
+    WHERE p.is_active=1 AND p.name<>'Bardana'
     GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all(date, date, date, date);
   res.json({ date, rows });
@@ -978,7 +978,7 @@ app.get('/api/stock/monthly', (req, res) => {
       ROUND(ABS(COALESCE(SUM(CASE WHEN sm.date >= ? AND sm.date <= ? AND sm.qty_kg < 0 THEN sm.qty_kg ELSE 0 END),0)),2) AS out_qty,
       ROUND(COALESCE(SUM(CASE WHEN sm.date <= ? THEN sm.qty_kg ELSE 0 END),0),2) AS closing
     FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    WHERE p.is_active=1
+    WHERE p.is_active=1 AND p.name<>'Bardana'
     GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
   `).all(start, start, endDate, start, endDate, endDate);
   res.json({ month, start, end: endDate, rows });
@@ -1101,7 +1101,7 @@ app.get('/api/appendix/daily', (req, res) => {
         WHERE sm.product_id=p.id AND sm.date<=?
       ),0),2) AS closing_kg
     FROM products p
-    WHERE p.is_active=1 AND p.name<>'Wheat'
+    WHERE p.is_active=1 AND p.name<>'Bardana' AND p.name<>'Wheat'
     ORDER BY p.name COLLATE NOCASE
   `).all(date, date).map((row) => ({
     ...row,
