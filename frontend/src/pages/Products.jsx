@@ -25,7 +25,7 @@ export default function Products(){
     }catch(e){setError(e.message)}
   };
 
-  const finished=rows.filter(p=>p.name!=='Wheat');
+  const finished=rows.filter(p=>!['Wheat','Bardana'].includes(p.name));
   return <>
     <PageHeader title={t('products','Products')}/>
     <ErrorBox error={error}/><SuccessBox text={success}/>
