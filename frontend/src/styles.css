@@ -141,9 +141,21 @@
 .sale-row .amount-cell{min-height:42px;display:flex;align-items:center}
 .sale-row>.icon-btn{align-self:start}
 
-.table-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.table-actions{display:grid;grid-template-columns:64px 96px 72px;gap:8px;align-items:center}
 .danger-btn{border:1px solid #e6c7c7;background:#fff5f5;color:#a93232;border-radius:8px;padding:10px 14px;cursor:pointer}
 .danger-btn:hover{background:#ffeaea}
 .danger-btn.small{padding:8px 11px;font-size:12px}
 :root[data-theme="dark"] .danger-btn{background:#351d1d;border-color:#633131;color:#ffbcbc}
 :root[data-theme="dark"] .danger-btn:hover{background:#442222}
+
+.products-layout table th,
+.products-layout table td{vertical-align:middle}
+.products-layout table th:last-child,
+.products-layout table td:last-child{width:264px}
+.products-layout .table-actions button{width:100%;justify-content:center}
+
+@media(max-width:760px){
+  .products-layout table th:last-child,
+  .products-layout table td:last-child{width:auto}
+  .products-layout .table-actions{grid-template-columns:1fr}
+}
