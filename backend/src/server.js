@@ -91,6 +91,51 @@ app.post('/api/products', (req, res) => {
   }
 });
 
+app.post('/api/products/:id/update', (req, res) => {
+  try {
+    const id = asNumber(req.params.id, 'Product', { min: 1, allowZero: false });
+    const product = db.prepare('SELECT * FROM products WHERE id=?').get(id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (['Wheat','Bardana'].includes(product.name)) throw new Error(`${product.name} cannot be renamed`);
+
+    const name = requiredText(req.body.name, 'Product name');
+    if (['wheat','bardana'].includes(name.toLowerCase())) throw new Error(`${name} is reserved for a system stock item`);
+
+    const duplicate = db.prepare('SELECT id FROM products WHERE LOWER(name)=LOWER(?) AND id<>?').get(name, id);
+    if (duplicate) throw new Error('Another product with this name already exists');
+
+    db.prepare('UPDATE products SET name=? WHERE id=?').run(name, id);
+    res.json(db.prepare('SELECT * FROM products WHERE id=?').get(id));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/products/:id/delete', (req, res) => {
+  try {
+    const id = asNumber(req.params.id, 'Product', { min: 1, allowZero: false });
+    const product = db.prepare('SELECT * FROM products WHERE id=?').get(id);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+    if (['Wheat','Bardana'].includes(product.name)) throw new Error(`${product.name} cannot be deleted`);
+
+    const usage = {
+      stock: db.prepare('SELECT COUNT(*) AS n FROM stock_movements WHERE product_id=?').get(id).n,
+      production: db.prepare('SELECT COUNT(*) AS n FROM production_items WHERE product_id=?').get(id).n,
+      sales: db.prepare('SELECT COUNT(*) AS n FROM sale_items WHERE product_id=?').get(id).n,
+      consumption: db.prepare('SELECT COUNT(*) AS n FROM product_consumption WHERE product_id=?').get(id).n,
+    };
+    const totalUsage = Object.values(usage).reduce((sum, n) => sum + Number(n || 0), 0);
+    if (totalUsage > 0) {
+      throw new Error('This product already has historical records. Deactivate it instead of deleting it.');
+    }
+
+    db.prepare('DELETE FROM products WHERE id=?').run(id);
+    res.json({ id, deleted: true, name: product.name });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
 app.post('/api/products/:id/toggle', (req, res) => {
   try {
     const id = asNumber(req.params.id, 'Product', { min: 1, allowZero: false });
