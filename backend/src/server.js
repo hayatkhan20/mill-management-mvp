@@ -192,7 +192,9 @@ app.get('/api/customers/:id', (req, res) => {
   `).get(id);
   const laterPayments = db.prepare('SELECT ROUND(COALESCE(SUM(amount),0),2) AS total FROM payments WHERE customer_id=?').get(id).total;
   const quantities = db.prepare(`
-    SELECT p.name AS product, ROUND(COALESCE(SUM(si.total_kg),0),2) AS kg
+    SELECT p.name AS product,
+           ROUND(COALESCE(SUM(CASE WHEN p.name='Bardana' THEN si.bags ELSE si.total_kg END),0),2) AS quantity,
+           CASE WHEN p.name='Bardana' THEN 'Bags' ELSE 'KG' END AS unit
     FROM sale_items si
     JOIN sales s ON s.id=si.sale_id
     JOIN products p ON p.id=si.product_id
