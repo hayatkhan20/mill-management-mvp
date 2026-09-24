@@ -6,7 +6,7 @@ import { money, num, printNamed, today } from '../utils';
 import { Plus, Printer, Search, Trash2, UserPlus } from 'lucide-react';
 import DateField, { formatDateDMY } from '../components/DateField';
 
-const blankItem=()=>({product_id:'',bag_size:'20',bags:'',total_kg:'',rate:''});
+const blankItem=()=>({product_id:'',bag_size:'20',custom_bag_size:'',bags:'',total_kg:'',rate:''});
 const blankCustomer=()=>({name:'',phone:'',address:''});
 const balanceLabel=(balance)=>Number(balance)<0?`Advance ${money(Math.abs(balance))}`:`Pending ${money(balance)}`;
 
@@ -23,12 +23,10 @@ export default function Sales(){
  const loadHistory=async(value=historyDate)=>{try{setHistoryRows(await api.get(value?`/sales?date=${value}`:'/sales'));}catch(e){setError(e.message)}};
  useEffect(()=>{loadBase();loadHistory(today())},[]);
 
- const modeOf=(item)=>products.find(p=>String(p.id)===String(item.product_id))?.sale_mode||'bag';
- const itemAmount=(item)=>{
-   const mode=modeOf(item);
-   if(mode==='kg') return Number(item.total_kg||0)*Number(item.rate||0);
-   return Number(item.bags||0)*Number(item.rate||0);
- };
+ const productOf=(item)=>products.find(p=>String(p.id)===String(item.product_id));
+ const isBardana=(item)=>productOf(item)?.name==='Bardana';
+ const effectiveBagSize=(item)=>item.bag_size==='custom'?Number(item.custom_bag_size||0):Number(item.bag_size||0);
+ const itemAmount=(item)=>Number(item.bags||0)*Number(item.rate||0);
  const total=useMemo(()=>items.reduce((sum,i)=>sum+itemAmount(i),0),[items,products]);
  const historySummary=useMemo(()=>({
    total:historyRows.reduce((s,r)=>s+Number(r.total_amount||0),0),
@@ -47,11 +45,15 @@ export default function Sales(){
  const updateItem=(idx,key,value)=>setItems(prev=>prev.map((it,i)=>{
    if(i!==idx)return it;
    let next={...it,[key]:value};
-   if(key==='product_id'){
-     const p=products.find(x=>String(x.id)===String(value));
-     next={...blankItem(),product_id:value,bag_size:p?.sale_mode==='bag'?'20':'0'};
+   if(key==='product_id') next={...blankItem(),product_id:value};
+   if(isBardana(next)){
+     next.bag_size='0';
+     next.custom_bag_size='';
+     next.total_kg='';
+   }else{
+     const kgPerBag=effectiveBagSize(next);
+     next.total_kg=(kgPerBag>0&&Number(next.bags||0)>0)?kgPerBag*Number(next.bags||0):'';
    }
-   if(modeOf(next)==='bag'&&(key==='bag_size'||key==='bags'||key==='product_id')) next.total_kg=Number(next.bag_size||0)*Number(next.bags||0)||'';
    return next;
  }));
 
@@ -84,7 +86,12 @@ export default function Sales(){
      const s=await api.get(`/sales/${id}`);
      setEditSaleId(s.id);setBill(s.bill_no);setDate(s.date);setCustomerId(String(s.customer_id));setCustomerQuery(s.customer_name);
      setReceived(s.received_amount);setRemarks(s.remarks||'');
-     setItems(s.items.map(i=>({product_id:String(i.product_id),bag_size:String(i.bag_size||0),bags:i.bags||'',total_kg:i.total_kg||'',rate:i.rate||''})));
+     setItems(s.items.map(i=>{
+       const isBardanaItem=i.product_name==='Bardana';
+       const size=Number(i.bag_size||0);
+       const preset=!isBardanaItem&&(size===20||size===40);
+       return {product_id:String(i.product_id),bag_size:isBardanaItem?'0':(preset?String(size):'custom'),custom_bag_size:(!isBardanaItem&&!preset&&size>0)?String(size):'',bags:i.bags||'',total_kg:i.total_kg||'',rate:i.rate||''};
+     }));
      window.scrollTo({top:0,behavior:'smooth'});
    }catch(e){setError(e.message)}
  };
@@ -116,14 +123,23 @@ export default function Sales(){
  </div>
 
  <div className="sale-items">
-   <div className="sale-row sale-row-head"><span>{t('product','Product')}</span><span>Unit</span><span>{t('quantity','Quantity')}</span><span>{t('totalKg','Total KG')}</span><span>{t('rate','Rate')}</span><span>{t('amount','Amount')}</span><span></span></div>
+   <div className="sale-row sale-row-head"><span>{t('product','Product')}</span><span>KG per Bag</span><span>{t('bags','Bags')}</span><span>{t('totalKg','Total KG')}</span><span>Rate / Bag</span><span>{t('amount','Amount')}</span><span></span></div>
    {items.map((it,idx)=>{
-     const mode=modeOf(it);
+     const bardana=isBardana(it);
      return <div className="sale-row" key={idx}>
        <select required value={it.product_id} onChange={e=>updateItem(idx,'product_id',e.target.value)}><option value="">Product</option>{products.map(p=><option value={p.id} key={p.id}>{p.name}</option>)}</select>
-       {mode==='bag'?<select required value={it.bag_size} onChange={e=>updateItem(idx,'bag_size',e.target.value)}><option value="20">20 KG</option><option value="40">40 KG</option></select>:<input readOnly value={mode==='bardana'?'Bag':'KG'}/>}
-       {mode==='kg'?<input required type="number" min="0.01" step="0.01" value={it.total_kg} onChange={e=>updateItem(idx,'total_kg',e.target.value)}/>:<input required type="number" min="1" step="1" value={it.bags} onChange={e=>updateItem(idx,'bags',e.target.value)}/>}
-       <input readOnly value={mode==='bardana'?'—':(mode==='kg'?it.total_kg:(it.total_kg||''))} placeholder="0"/>
+       {bardana
+         ? <input readOnly value="Count only"/>
+         : <div className="bag-size-cell">
+             <select required value={it.bag_size} onChange={e=>updateItem(idx,'bag_size',e.target.value)}>
+               <option value="20">20 KG</option>
+               <option value="40">40 KG</option>
+               <option value="custom">Custom</option>
+             </select>
+             {it.bag_size==='custom'&&<input required type="number" min="0.01" step="0.01" placeholder="Custom KG" value={it.custom_bag_size} onChange={e=>updateItem(idx,'custom_bag_size',e.target.value)}/>}
+           </div>}
+       <input required type="number" min="1" step="1" value={it.bags} onChange={e=>updateItem(idx,'bags',e.target.value)}/>
+       <input readOnly value={bardana?'—':(it.total_kg||'')} placeholder="0"/>
        <input required type="number" min="0.01" step="0.01" value={it.rate} onChange={e=>updateItem(idx,'rate',e.target.value)}/>
        <div className="amount-cell">{money(itemAmount(it))}</div>
        <button type="button" className="icon-btn danger" disabled={items.length===1} onClick={()=>setItems(items.filter((_,i)=>i!==idx))}><Trash2 size={16}/></button>
@@ -151,5 +167,5 @@ function AddCustomerModal({customer,setCustomer,onClose,onSave}){
 
 export function Invoice({sale,onClose}){
  const print=()=>printNamed(`${sale.customer_name}-${formatDateDMY(sale.date).replaceAll('/','-')}-${sale.bill_no}`);
- return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="primary" onClick={print}><Printer size={16}/> Print Bill</button></div><div className="invoice"><div className="invoice-head"><div><h2>FLOUR MILL</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{formatDateDMY(sale.date)}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Unit</th><th>Quantity</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=>{const isBardana=i.product_name==='Bardana';const isKg=Number(i.bag_size)===0&&!isBardana;return <tr key={i.id}><td>{i.product_name}</td><td>{isBardana?'Bag':isKg?'KG':`${num(i.bag_size)} KG Bag`}</td><td>{isBardana?num(i.bags):isKg?num(i.total_kg):num(i.bags)}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>})}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>
+ return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="primary" onClick={print}><Printer size={16}/> Print Bill</button></div><div className="invoice"><div className="invoice-head"><div><h2>FLOUR MILL</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{formatDateDMY(sale.date)}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Unit</th><th>Quantity</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=>{const bardana=i.product_name==='Bardana';return <tr key={i.id}><td>{i.product_name}</td><td>{bardana?'Count':`${num(i.bag_size)} KG / Bag`}</td><td>{num(i.bags)} {bardana?'Bags':'Bags'}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>})}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>
 }

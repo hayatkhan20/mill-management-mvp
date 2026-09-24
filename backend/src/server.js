@@ -734,28 +734,20 @@ app.post('/api/sales', (req, res) => {
       const productId=asNumber(item.product_id,`Item ${index+1} product`,{min:1,allowZero:false});
       const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
       if(!product) throw new Error(`Item ${index+1}: select an active product`);
-      const mode=product.sale_mode||'bag';
-      if(mode==='bag'){
-        const bagSize=asNumber(item.bag_size,`Item ${index+1} bag size`,{min:20,allowZero:false});
-        if(![20,40].includes(bagSize)) throw new Error(`Item ${index+1}: bag size must be 20 KG or 40 KG`);
-        const bags=asNumber(item.bags,`Item ${index+1} bags`,{min:1,allowZero:false});
-        if(!Number.isInteger(bags)) throw new Error(`Item ${index+1}: number of bags must be a whole number`);
-        const totalKg=round2(bagSize*bags);
-        const rate=round2(asNumber(item.rate,`Item ${index+1} rate per bag`,{min:0,allowZero:false}));
-        return {product,productId,mode,bagSize,bags,totalKg,rate,amount:round2(bags*rate)};
-      }
-      if(mode==='kg'){
-        const totalKg=round2(asNumber(item.total_kg,`Item ${index+1} KG`,{min:0,allowZero:false}));
-        const rate=round2(asNumber(item.rate,`Item ${index+1} rate per KG`,{min:0,allowZero:false}));
-        return {product,productId,mode,bagSize:0,bags:0,totalKg,rate,amount:round2(totalKg*rate)};
-      }
-      if(mode==='bardana'){
-        const bags=asNumber(item.bags,`Item ${index+1} bags`,{min:1,allowZero:false});
+
+      if(product.name==='Bardana'){
+        const bags=asNumber(item.bags,`Item ${index+1} Bardana bags`,{min:1,allowZero:false});
         if(!Number.isInteger(bags)) throw new Error(`Item ${index+1}: Bardana bags must be a whole number`);
         const rate=round2(asNumber(item.rate,`Item ${index+1} rate per bag`,{min:0,allowZero:false}));
-        return {product,productId,mode,bagSize:0,bags,totalKg:0,rate,amount:round2(bags*rate)};
+        return {product,productId,mode:'bardana',bagSize:0,bags,totalKg:0,rate,amount:round2(bags*rate)};
       }
-      throw new Error(`Item ${index+1}: unsupported sale mode`);
+
+      const bagSize=round2(asNumber(item.bag_size,`Item ${index+1} KG per bag`,{min:0,allowZero:false}));
+      const bags=asNumber(item.bags,`Item ${index+1} bags`,{min:1,allowZero:false});
+      if(!Number.isInteger(bags)) throw new Error(`Item ${index+1}: number of bags must be a whole number`);
+      const totalKg=round2(bagSize*bags);
+      const rate=round2(asNumber(item.rate,`Item ${index+1} rate per bag`,{min:0,allowZero:false}));
+      return {product,productId,mode:'bag',bagSize,bags,totalKg,rate,amount:round2(bags*rate)};
     });
 
     const requestedByProduct=new Map();
@@ -813,41 +805,27 @@ app.post('/api/sales/:id/update', (req,res)=>{
     if(!db.prepare('SELECT id FROM customers WHERE id=?').get(customerId)) throw new Error('Customer not found');
     if(!Array.isArray(req.body.items)||!req.body.items.length) throw new Error('Add at least one sale item');
 
-    const normalizedItems=req.body.items.map((item,index)=>{
+    const normalizedItems = req.body.items.map((item,index)=>{
       const productId=asNumber(item.product_id,`Item ${index+1} product`,{min:1,allowZero:false});
       const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
       if(!product) throw new Error(`Item ${index+1}: select an active product`);
-      const mode=product.sale_mode||'bag';
-      if(mode==='bag'){
-        const bagSize=asNumber(item.bag_size,`Item ${index+1} bag size`,{min:20,allowZero:false});
-        if(![20,40].includes(bagSize)) throw new Error('Bag size must be 20 KG or 40 KG');
-        const bags=asNumber(item.bags,`Item ${index+1} bags`,{min:1,allowZero:false});
-        if(!Number.isInteger(bags)) throw new Error('Number of bags must be a whole number');
-        const totalKg=round2(bagSize*bags), rate=round2(asNumber(item.rate,'Rate',{min:0,allowZero:false}));
-        return {product,productId,mode,bagSize,bags,totalKg,rate,amount:round2(bags*rate)};
+
+      if(product.name==='Bardana'){
+        const bags=asNumber(item.bags,`Item ${index+1} Bardana bags`,{min:1,allowZero:false});
+        if(!Number.isInteger(bags)) throw new Error(`Item ${index+1}: Bardana bags must be a whole number`);
+        const rate=round2(asNumber(item.rate,`Item ${index+1} rate per bag`,{min:0,allowZero:false}));
+        return {product,productId,mode:'bardana',bagSize:0,bags,totalKg:0,rate,amount:round2(bags*rate)};
       }
-      if(mode==='kg'){
-        const totalKg=round2(asNumber(item.total_kg,'KG',{min:0,allowZero:false}));
-        const rate=round2(asNumber(item.rate,'Rate per KG',{min:0,allowZero:false}));
-        return {product,productId,mode,bagSize:0,bags:0,totalKg,rate,amount:round2(totalKg*rate)};
-      }
-      const bags=asNumber(item.bags,'Bardana bags',{min:1,allowZero:false});
-      if(!Number.isInteger(bags)) throw new Error('Bardana bags must be a whole number');
-      const rate=round2(asNumber(item.rate,'Rate per bag',{min:0,allowZero:false}));
-      return {product,productId,mode,bagSize:0,bags,totalKg:0,rate,amount:round2(bags*rate)};
+
+      const bagSize=round2(asNumber(item.bag_size,`Item ${index+1} KG per bag`,{min:0,allowZero:false}));
+      const bags=asNumber(item.bags,`Item ${index+1} bags`,{min:1,allowZero:false});
+      if(!Number.isInteger(bags)) throw new Error(`Item ${index+1}: number of bags must be a whole number`);
+      const totalKg=round2(bagSize*bags);
+      const rate=round2(asNumber(item.rate,`Item ${index+1} rate per bag`,{min:0,allowZero:false}));
+      return {product,productId,mode:'bag',bagSize,bags,totalKg,rate,amount:round2(bags*rate)};
     });
 
-    const totalAmount=round2(normalizedItems.reduce((s,x)=>s+x.amount,0));
-    const received=round2(asNumber(req.body.received_amount??0,'Amount received'));
-    if(received>totalAmount+0.001) throw new Error('Amount received cannot exceed bill total.');
-    const pending=round2(totalAmount-received);
-    const remarks=String(req.body.remarks??'').trim();
-
-    db.transaction(()=>{
-      db.prepare("DELETE FROM stock_movements WHERE reference_type='sale' AND reference_id=?").run(saleId);
-      db.prepare("DELETE FROM bardana_movements WHERE reference_type='sale_bardana' AND reference_id=?").run(saleId);
-
-      const requestedByProduct=new Map(); let bardanaRequested=0;
+    const requestedByProduct=new Map(); let bardanaRequested=0;
       for(const item of normalizedItems){
         if(item.mode==='bardana') bardanaRequested+=item.bags;
         else requestedByProduct.set(item.productId,(requestedByProduct.get(item.productId)||0)+item.totalKg);
