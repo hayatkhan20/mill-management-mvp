@@ -335,15 +335,15 @@ app.get('/api/sources/:id', (req, res) => {
   const events = db.prepare(`
     SELECT 'wheat' AS type, w.id, w.date, w.created_at, 'Wheat Purchase #' || w.id AS reference,
            (w.total_cost + COALESCE(w.bardana_cost,0)) AS debit, 0 AS credit,
-           w.remarks AS note
+           w.remarks AS note, NULL AS payment_reference_type
     FROM wheat_in w WHERE w.source_id=?
     UNION ALL
     SELECT 'bardana' AS type, b.id, b.date, b.created_at, 'Bardana Purchase #' || b.id AS reference,
-           b.total_cost AS debit, 0 AS credit, b.remarks AS note
+           b.total_cost AS debit, 0 AS credit, b.remarks AS note, NULL AS payment_reference_type
     FROM bardana_purchases b WHERE b.source_id=?
     UNION ALL
     SELECT 'payment' AS type, p.id, p.date, p.created_at, 'Payment' AS reference,
-           0 AS debit, p.amount AS credit, p.note AS note
+           0 AS debit, p.amount AS credit, p.note AS note, p.reference_type AS payment_reference_type
     FROM source_payments p WHERE p.source_id=?
     ORDER BY date ASC, created_at ASC, type ASC, id ASC
   `).all(id, id, id);
