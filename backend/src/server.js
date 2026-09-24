@@ -75,7 +75,7 @@ app.get('/api/products', (req, res) => {
 app.post('/api/products', (req, res) => {
   try {
     const name = requiredText(req.body.name, 'Product name');
-    if (name.toLowerCase() === 'wheat') throw new Error('Wheat is a system stock item and already exists');
+    if (['wheat','bardana'].includes(name.toLowerCase())) throw new Error(`${name} is a system stock item and already exists`);
     const existing = db.prepare('SELECT * FROM products WHERE LOWER(name)=LOWER(?)').get(name);
     if (existing) {
       if (!existing.is_active) {
@@ -96,7 +96,7 @@ app.post('/api/products/:id/toggle', (req, res) => {
     const id = asNumber(req.params.id, 'Product', { min: 1, allowZero: false });
     const product = db.prepare('SELECT * FROM products WHERE id=?').get(id);
     if (!product) return res.status(404).json({ error: 'Product not found' });
-    if (product.name === 'Wheat') throw new Error('Wheat cannot be deactivated');
+    if (['Wheat','Bardana'].includes(product.name)) throw new Error(`${product.name} cannot be deactivated`);
     db.prepare('UPDATE products SET is_active=? WHERE id=?').run(product.is_active ? 0 : 1, id);
     res.json(db.prepare('SELECT * FROM products WHERE id=?').get(id));
   } catch (e) {
@@ -134,7 +134,8 @@ app.get('/api/dashboard', (_req, res) => {
     sales_today: round2(salesToday),
     received_today: round2(receivedOnSales + receivedPayments),
     total_pending: round2(pending),
-    active_products: products.filter((p) => p.name !== 'Wheat').length,
+    active_products: products.filter((p) => !['Wheat','Bardana'].includes(p.name)).length,
+    bardana_stock_current: bardanaStock().current,
     recent_sales: recentSales,
   });
 });
@@ -405,15 +406,18 @@ app.post('/api/wheat-in', (req, res) => {
     const bardanaRate = asNumber(req.body.bardana_rate_per_bag ?? 0, 'Bardana rate per bag');
     const totalCost = round2(totalKg * rate);
     const bardanaCost = round2(bags * bardanaRate);
+    const purchaseTotal = round2(totalCost + bardanaCost);
+    const paidAmount = round2(asNumber(req.body.paid_amount ?? 0, 'Amount paid'));
+    if (paidAmount > purchaseTotal + 0.001) throw new Error('Amount paid cannot exceed purchase total. Record extra as source advance payment.');
     const wheat = getProduct('Wheat');
     const remarks = String(req.body.remarks ?? '').trim();
 
     const tx = db.transaction(() => {
       const result = db.prepare(`
         INSERT INTO wheat_in
-          (date,source_id,source_type,source_name,bags,total_kg,rate_per_kg,total_cost,bardana_rate_per_bag,bardana_cost,remarks)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?)
-      `).run(date, sourceId, source.source_type, source.name, bags, totalKg, rate, totalCost, bardanaRate, bardanaCost, remarks);
+          (date,source_id,source_type,source_name,bags,total_kg,rate_per_kg,total_cost,bardana_rate_per_bag,bardana_cost,paid_amount,remarks)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      `).run(date, sourceId, source.source_type, source.name, bags, totalKg, rate, totalCost, bardanaRate, bardanaCost, paidAmount, remarks);
       const id = result.lastInsertRowid;
       db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
         VALUES (?,?,?,?,?,?,?)`).run(date, wheat.id, totalKg, 'IN', 'wheat_in', id, `Wheat received from ${source.name}`);
@@ -421,13 +425,53 @@ app.post('/api/wheat-in', (req, res) => {
         db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
           VALUES (?,?,?,?,?,?)`).run(date, bags, 'IN', 'wheat_in', id, `Bardana received with wheat from ${source.name}`);
       }
+      if (paidAmount > 0) {
+        db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id)
+          VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${id}`,'wheat_in',id);
+      }
       return id;
     });
     const id = tx();
-    res.status(201).json({ id, wheat_cost: totalCost, bardana_cost: bardanaCost, total_purchase: round2(totalCost + bardanaCost) });
+    res.status(201).json({ id, wheat_cost: totalCost, bardana_cost: bardanaCost, total_purchase: purchaseTotal, paid_amount: paidAmount, source_balance: sourceBalance(sourceId) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+app.post('/api/wheat-in/:id/update', (req, res) => {
+  try {
+    const id = asNumber(req.params.id,'Purchase',{min:1,allowZero:false});
+    const existing = db.prepare('SELECT * FROM wheat_in WHERE id=?').get(id);
+    if (!existing) return res.status(404).json({error:'Wheat purchase not found'});
+    const date=req.body.date||existing.date;
+    const sourceId=asNumber(req.body.source_id,'Source',{min:1,allowZero:false});
+    const source=db.prepare('SELECT * FROM sources WHERE id=?').get(sourceId);
+    if(!source) throw new Error('Source not found');
+    const bags=asNumber(req.body.bags??0,'Bags'); if(!Number.isInteger(bags)) throw new Error('Number of bags must be a whole number');
+    const totalKg=asNumber(req.body.total_kg,'Total KG',{min:0,allowZero:false});
+    const rate=asNumber(req.body.rate_per_kg,'Wheat rate per KG');
+    const bardanaRate=asNumber(req.body.bardana_rate_per_bag??0,'Bardana rate per bag');
+    const totalCost=round2(totalKg*rate), bardanaCost=round2(bags*bardanaRate), purchaseTotal=round2(totalCost+bardanaCost);
+    const paidAmount=round2(asNumber(req.body.paid_amount??0,'Amount paid'));
+    if(paidAmount>purchaseTotal+0.001) throw new Error('Amount paid cannot exceed purchase total.');
+    const remarks=String(req.body.remarks??'').trim();
+    const wheat=getProduct('Wheat');
+
+    db.transaction(()=>{
+      db.prepare("DELETE FROM source_payments WHERE reference_type='wheat_in' AND reference_id=?").run(id);
+      db.prepare("DELETE FROM stock_movements WHERE reference_type='wheat_in' AND reference_id=?").run(id);
+      db.prepare("DELETE FROM bardana_movements WHERE reference_type='wheat_in' AND reference_id=?").run(id);
+      db.prepare(`UPDATE wheat_in SET date=?,source_id=?,source_type=?,source_name=?,bags=?,total_kg=?,rate_per_kg=?,total_cost=?,bardana_rate_per_bag=?,bardana_cost=?,paid_amount=?,remarks=? WHERE id=?`)
+        .run(date,sourceId,source.source_type,source.name,bags,totalKg,rate,totalCost,bardanaRate,bardanaCost,paidAmount,remarks,id);
+      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`)
+        .run(date,wheat.id,totalKg,'IN','wheat_in',id,`Wheat received from ${source.name}`);
+      if(bags>0) db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?)`)
+        .run(date,bags,'IN','wheat_in',id,`Bardana received with wheat from ${source.name}`);
+      if(paidAmount>0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id) VALUES (?,?,?,?,?,?)`)
+        .run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${id}`,'wheat_in',id);
+    })();
+    res.json({id,total_purchase:purchaseTotal,paid_amount:paidAmount,source_balance:sourceBalance(sourceId)});
+  } catch(e){ res.status(400).json({error:e.message}); }
 });
 
 app.get('/api/bardana-purchases', (req, res) => {
@@ -454,21 +498,56 @@ app.post('/api/bardana-purchases', (req, res) => {
     if (!Number.isInteger(quantity)) throw new Error('Bardana quantity must be a whole number');
     const rate = asNumber(req.body.rate_per_bag ?? 0, 'Rate per bag');
     const totalCost = round2(quantity * rate);
+    const paidAmount = round2(asNumber(req.body.paid_amount ?? 0, 'Amount paid'));
+    if (paidAmount > totalCost + 0.001) throw new Error('Amount paid cannot exceed purchase total. Record extra as source advance payment.');
     const remarks = String(req.body.remarks ?? '').trim();
 
     const tx = db.transaction(() => {
-      const result = db.prepare(`INSERT INTO bardana_purchases (date,source_id,quantity,rate_per_bag,total_cost,remarks)
-        VALUES (?,?,?,?,?,?)`).run(date, sourceId, quantity, rate, totalCost, remarks);
+      const result = db.prepare(`INSERT INTO bardana_purchases (date,source_id,quantity,rate_per_bag,total_cost,paid_amount,remarks)
+        VALUES (?,?,?,?,?,?,?)`).run(date, sourceId, quantity, rate, totalCost, paidAmount, remarks);
       const id = result.lastInsertRowid;
       db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
         VALUES (?,?,?,?,?,?)`).run(date, quantity, 'IN', 'bardana_purchase', id, `Bardana purchased from ${source.name}`);
+      if (paidAmount > 0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id)
+        VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Bardana Purchase #${id}`,'bardana_purchase',id);
       return id;
     });
     const id = tx();
-    res.status(201).json({ id, total_cost: totalCost, source_balance: sourceBalance(sourceId) });
+    res.status(201).json({ id, total_cost: totalCost, paid_amount: paidAmount, source_balance: sourceBalance(sourceId) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+app.post('/api/bardana-purchases/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Purchase',{min:1,allowZero:false});
+    const existing=db.prepare('SELECT * FROM bardana_purchases WHERE id=?').get(id);
+    if(!existing) return res.status(404).json({error:'Bardana purchase not found'});
+    const date=req.body.date||existing.date;
+    const sourceId=asNumber(req.body.source_id,'Source',{min:1,allowZero:false});
+    const source=db.prepare('SELECT * FROM sources WHERE id=?').get(sourceId);
+    if(!source) throw new Error('Source not found');
+    const quantity=asNumber(req.body.quantity,'Bardana quantity',{min:1,allowZero:false});
+    if(!Number.isInteger(quantity)) throw new Error('Bardana quantity must be a whole number');
+    const rate=asNumber(req.body.rate_per_bag??0,'Rate per bag');
+    const totalCost=round2(quantity*rate);
+    const paidAmount=round2(asNumber(req.body.paid_amount??0,'Amount paid'));
+    if(paidAmount>totalCost+0.001) throw new Error('Amount paid cannot exceed purchase total.');
+    const remarks=String(req.body.remarks??'').trim();
+
+    db.transaction(()=>{
+      db.prepare("DELETE FROM source_payments WHERE reference_type='bardana_purchase' AND reference_id=?").run(id);
+      db.prepare("DELETE FROM bardana_movements WHERE reference_type='bardana_purchase' AND reference_id=?").run(id);
+      db.prepare('UPDATE bardana_purchases SET date=?,source_id=?,quantity=?,rate_per_bag=?,total_cost=?,paid_amount=?,remarks=? WHERE id=?')
+        .run(date,sourceId,quantity,rate,totalCost,paidAmount,remarks,id);
+      db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?)`)
+        .run(date,quantity,'IN','bardana_purchase',id,`Bardana purchased from ${source.name}`);
+      if(paidAmount>0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id) VALUES (?,?,?,?,?,?)`)
+        .run(sourceId,date,paidAmount,`Paid with Bardana Purchase #${id}`,'bardana_purchase',id);
+    })();
+    res.json({id,total_cost:totalCost,paid_amount:paidAmount,source_balance:sourceBalance(sourceId)});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.get('/api/bardana/stock', (_req, res) => {
