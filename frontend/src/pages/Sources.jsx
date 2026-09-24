@@ -70,7 +70,7 @@ export default function Sources(){
    </div>
    <div className="quantities"><span>Wheat: <strong>{num(selected.wheat_kg)} KG</strong></span><span>Bardana received: <strong>{num(selected.bardana_bags)} Bags</strong></span></div>
 
-   <Card><h3>{editingPaymentId?'Edit Source Payment':'Pay Source'}</h3><form className="form-inline" onSubmit={pay}>
+   <Card className="no-print"><h3>{editingPaymentId?'Edit Source Payment':'Pay Source'}</h3><form className="form-inline" onSubmit={pay}>
     <DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/>
     <input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/>
     <input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/>
