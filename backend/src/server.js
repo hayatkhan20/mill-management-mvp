@@ -254,6 +254,19 @@ app.post('/api/payments', (req, res) => {
   }
 });
 
+app.post('/api/payments/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Payment',{min:1,allowZero:false});
+    const existing=db.prepare('SELECT * FROM payments WHERE id=?').get(id);
+    if(!existing) return res.status(404).json({error:'Customer payment not found'});
+    const amount=round2(asNumber(req.body.amount,'Amount',{min:0,allowZero:false}));
+    const date=req.body.date||existing.date;
+    const note=String(req.body.note??'').trim();
+    db.prepare('UPDATE payments SET date=?,amount=?,note=? WHERE id=?').run(date,amount,note,id);
+    res.json({id,balance:customerBalance(existing.customer_id)});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
 app.get('/api/sources', (_req, res) => {
   const rows = db.prepare(`
     SELECT s.*,
@@ -374,6 +387,20 @@ app.post('/api/source-payments', (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+app.post('/api/source-payments/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Payment',{min:1,allowZero:false});
+    const existing=db.prepare('SELECT * FROM source_payments WHERE id=?').get(id);
+    if(!existing) return res.status(404).json({error:'Source payment not found'});
+    if(existing.reference_type) throw new Error('Purchase-linked payment must be edited from the purchase record');
+    const amount=round2(asNumber(req.body.amount,'Amount',{min:0,allowZero:false}));
+    const date=req.body.date||existing.date;
+    const note=String(req.body.note??'').trim();
+    db.prepare('UPDATE source_payments SET date=?,amount=?,note=? WHERE id=?').run(date,amount,note,id);
+    res.json({id,balance:sourceBalance(existing.source_id)});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.get('/api/wheat-in', (req, res) => {
@@ -614,6 +641,43 @@ app.post('/api/production', (req, res) => {
   }
 });
 
+app.post('/api/production/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Production',{min:1,allowZero:false});
+    const existing=db.prepare('SELECT * FROM production WHERE id=?').get(id);
+    if(!existing) return res.status(404).json({error:'Production record not found'});
+    const date=req.body.date||existing.date;
+    const wheatConsumed=asNumber(req.body.wheat_consumed??0,'Wheat consumed');
+    const rawItems=Array.isArray(req.body.items)?req.body.items:[];
+    const normalizedItems=rawItems.map((item,index)=>{
+      const productId=asNumber(item.product_id,`Product ${index+1}`,{min:1,allowZero:false});
+      const qtyKg=asNumber(item.qty_kg??0,`Product ${index+1} KG`);
+      if(qtyKg===0) return null;
+      const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
+      if(!product||['Wheat','Bardana'].includes(product.name)) throw new Error(`Product ${index+1} is invalid`);
+      return {product,productId,qtyKg:round2(qtyKg)};
+    }).filter(Boolean);
+    if(wheatConsumed===0&&!normalizedItems.length) throw new Error('Enter wheat consumed or at least one produced product');
+    const remarks=String(req.body.remarks??'').trim();
+    const wheat=getProduct('Wheat');
+
+    db.transaction(()=>{
+      db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(id);
+      if(wheatConsumed>currentProductStock(wheat.id)+0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
+      db.prepare('DELETE FROM production_items WHERE production_id=?').run(id);
+      db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?').run(date,wheatConsumed,remarks,id);
+      const insertItem=db.prepare('INSERT INTO production_items (production_id,product_id,qty_kg) VALUES (?,?,?)');
+      const insertMovement=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
+      if(wheatConsumed) insertMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',id,'Wheat used / ground');
+      for(const item of normalizedItems){
+        insertItem.run(id,item.productId,item.qtyKg);
+        insertMovement.run(date,item.productId,item.qtyKg,'IN','production',id,`${item.product.name} produced`);
+      }
+    })();
+    res.json({id});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
 const nextBillNo = () => {
   const row = db.prepare('SELECT id FROM sales ORDER BY id DESC LIMIT 1').get();
   return `B-${String((row?.id || 0) + 1).padStart(5, '0')}`;
@@ -849,6 +913,31 @@ app.post('/api/consumption', (req, res) => {
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
+});
+
+app.post('/api/consumption/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Consumption',{min:1,allowZero:false});
+    const existing=db.prepare('SELECT * FROM product_consumption WHERE id=?').get(id);
+    if(!existing) return res.status(404).json({error:'Consumption record not found'});
+    const date=req.body.date||existing.date;
+    const productId=asNumber(req.body.product_id,'Product',{min:1,allowZero:false});
+    const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
+    if(!product||['Wheat','Bardana'].includes(product.name)) throw new Error('Select a valid finished product');
+    const qtyKg=round2(asNumber(req.body.qty_kg,'Quantity KG',{min:0,allowZero:false}));
+    const reason=requiredText(req.body.reason,'Reason');
+    if(!['Home','Company / Mill Use','Donation','Other'].includes(reason)) throw new Error('Select a valid consumption reason');
+    const remarks=String(req.body.remarks??'').trim();
+    db.transaction(()=>{
+      db.prepare("DELETE FROM stock_movements WHERE reference_type='consumption' AND reference_id=?").run(id);
+      const stock=currentProductStock(productId);
+      if(qtyKg>stock+0.001) throw new Error(`${product.name} consumption exceeds current stock`);
+      db.prepare('UPDATE product_consumption SET date=?,product_id=?,qty_kg=?,reason=?,remarks=? WHERE id=?').run(date,productId,qtyKg,reason,remarks,id);
+      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`)
+        .run(date,productId,-qtyKg,'OUT','consumption',id,`${reason}: ${remarks||'Non-sale consumption'}`);
+    })();
+    res.json({id,current_stock_kg:currentProductStock(productId)});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.get('/api/stock/current', (_req, res) => {
