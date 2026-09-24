@@ -16,6 +16,7 @@ export default function Dashboard() {
     [t('todaysWheatIn',"Today's Wheat In"), `${num(data.wheat_received_today)} KG`],
     [t('todaysSales',"Today's Sales"), money(data.sales_today)],
     [t('receivedToday','Received Today'), money(data.received_today)],
+    [t('bardanaStock','Bardana Stock'), `${num(data.bardana_stock_current)} Bags`],
   ];
   const finished=data.stocks.filter(x=>x.name!=='Wheat');
   return <>

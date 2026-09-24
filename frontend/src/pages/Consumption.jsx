@@ -9,13 +9,13 @@ const blank=()=>({date:today(),product_id:'',qty_kg:'',reason:'Home',remarks:''}
 
 export default function Consumption(){
   const {t}=useUiPreferences();
-  const [products,setProducts]=useState([]),[rows,setRows]=useState([]),[form,setForm]=useState(blank());
+  const [products,setProducts]=useState([]),[rows,setRows]=useState([]),[form,setForm]=useState(blank()),[editingId,setEditingId]=useState(null);
   const [error,setError]=useState(''),[success,setSuccess]=useState('');
 
   const load=async()=>{
     try{
       const [p,r]=await Promise.all([api.get('/products'),api.get('/consumption')]);
-      setProducts(p.filter(x=>x.name!=='Wheat'));
+      setProducts(p.filter(x=>!['Wheat','Bardana'].includes(x.name)));
       setRows(r);
     }catch(e){setError(e.message)}
   };
@@ -26,9 +26,10 @@ export default function Consumption(){
     e.preventDefault();
     setError('');setSuccess('');
     try{
-      await api.post('/consumption',form);
+      await api.post(editingId?`/consumption/${editingId}/update`:'/consumption',form);
+      setEditingId(null);
       setForm(blank());
-      setSuccess('Stock out recorded and product stock reduced.');
+      setSuccess(editingId?'Consumption record updated.':'Stock out recorded and product stock reduced.');
       await load();
     }catch(e){setError(e.message)}
   };
@@ -56,14 +57,14 @@ export default function Consumption(){
             </select>
           </label>
           <label className="span-2">{t('remarks','Remarks')}<textarea value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})} placeholder={t('optional','Optional')}/></label>
-          <div className="span-2"><button className="primary">{t('saveStockOut','Save Stock Out')}</button></div>
+          <div className="span-2">{editingId&&<button type="button" className="secondary" onClick={()=>{setEditingId(null);setForm(blank())}}>Cancel Edit</button>} <button className="primary">{editingId?'Save Changes':t('saveStockOut','Save Stock Out')}</button></div>
         </form>
       </Card>
 
       <Card className="section-card-below">
         <h3>{t('recentStockOut','Recent Stock Out')}</h3>
-        {rows.length?<div className="table-wrap"><table><thead><tr><th>{t('date','Date')}</th><th>{t('product','Product')}</th><th>KG</th><th>{t('reason','Reason')}</th><th>{t('remarks','Remarks')}</th></tr></thead><tbody>
-          {rows.slice(0,30).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td><strong>{r.product_name}</strong></td><td>{num(r.qty_kg)} KG</td><td>{r.reason}</td><td>{r.remarks||'—'}</td></tr>)}
+        {rows.length?<div className="table-wrap"><table><thead><tr><th>{t('date','Date')}</th><th>{t('product','Product')}</th><th>KG</th><th>{t('reason','Reason')}</th><th>{t('remarks','Remarks')}</th><th></th></tr></thead><tbody>
+          {rows.slice(0,30).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td><strong>{r.product_name}</strong></td><td>{num(r.qty_kg)} KG</td><td>{r.reason}</td><td>{r.remarks||'—'}</td><td><button className="link-btn" onClick={()=>{setEditingId(r.id);setForm({date:r.date,product_id:String(r.product_id),qty_kg:r.qty_kg,reason:r.reason,remarks:r.remarks||''});window.scrollTo({top:0,behavior:'smooth'})}}>Edit</button></td></tr>)}
         </tbody></table></div>:<Empty/>}
       </Card>
     </div>

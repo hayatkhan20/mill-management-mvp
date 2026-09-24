@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
   is_active INTEGER NOT NULL DEFAULT 1,
+  sale_mode TEXT NOT NULL DEFAULT 'bag',
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS wheat_in (
   total_cost REAL NOT NULL,
   bardana_rate_per_bag REAL NOT NULL DEFAULT 0,
   bardana_cost REAL NOT NULL DEFAULT 0,
+  paid_amount REAL NOT NULL DEFAULT 0,
   remarks TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(source_id) REFERENCES sources(id)
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS bardana_purchases (
   quantity INTEGER NOT NULL,
   rate_per_bag REAL NOT NULL DEFAULT 0,
   total_cost REAL NOT NULL DEFAULT 0,
+  paid_amount REAL NOT NULL DEFAULT 0,
   remarks TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(source_id) REFERENCES sources(id)
@@ -78,6 +81,8 @@ CREATE TABLE IF NOT EXISTS source_payments (
   date TEXT NOT NULL,
   amount REAL NOT NULL,
   note TEXT,
+  reference_type TEXT,
+  reference_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(source_id) REFERENCES sources(id)
 );
@@ -200,6 +205,9 @@ const productColumns = db.prepare('PRAGMA table_info(products)').all();
 if (!productColumns.some((column) => column.name === 'is_active')) {
   db.exec('ALTER TABLE products ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;');
 }
+if (!productColumns.some((column) => column.name === 'sale_mode')) {
+  db.exec("ALTER TABLE products ADD COLUMN sale_mode TEXT NOT NULL DEFAULT 'bag';");
+}
 
 const customerColumns = db.prepare('PRAGMA table_info(customers)').all();
 if (!customerColumns.some((column) => column.name === 'opening_balance')) {
@@ -227,8 +235,25 @@ if (!wheatColumns.some((column) => column.name === 'bardana_rate_per_bag')) {
 if (!wheatColumns.some((column) => column.name === 'bardana_cost')) {
   db.exec('ALTER TABLE wheat_in ADD COLUMN bardana_cost REAL NOT NULL DEFAULT 0;');
 }
+if (!wheatColumns.some((column) => column.name === 'paid_amount')) {
+  db.exec('ALTER TABLE wheat_in ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0;');
+}
+
+const bardanaPurchaseColumns = db.prepare('PRAGMA table_info(bardana_purchases)').all();
+if (!bardanaPurchaseColumns.some((column) => column.name === 'paid_amount')) {
+  db.exec('ALTER TABLE bardana_purchases ADD COLUMN paid_amount REAL NOT NULL DEFAULT 0;');
+}
+
+const sourcePaymentColumns = db.prepare('PRAGMA table_info(source_payments)').all();
+if (!sourcePaymentColumns.some((column) => column.name === 'reference_type')) {
+  db.exec('ALTER TABLE source_payments ADD COLUMN reference_type TEXT;');
+}
+if (!sourcePaymentColumns.some((column) => column.name === 'reference_id')) {
+  db.exec('ALTER TABLE source_payments ADD COLUMN reference_id INTEGER;');
+}
 
 db.exec('CREATE INDEX IF NOT EXISTS idx_wheat_source ON wheat_in(source_id);');
+db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_source_payment_reference ON source_payments(reference_type, reference_id) WHERE reference_type IS NOT NULL AND reference_id IS NOT NULL;");
 
 const seedProduct = db.prepare('INSERT OR IGNORE INTO products (name, is_active) VALUES (?, 1)');
 [
@@ -240,7 +265,13 @@ const seedProduct = db.prepare('INSERT OR IGNORE INTO products (name, is_active)
   'Maida',
   'Suji',
   'Chokar',
+  'Waste',
+  'Bardana',
 ].forEach((name) => seedProduct.run(name));
+
+db.prepare("UPDATE products SET sale_mode='kg' WHERE name IN ('Wheat','Waste')").run();
+db.prepare("UPDATE products SET sale_mode='bardana' WHERE name='Bardana'").run();
+db.prepare("UPDATE products SET sale_mode='bag' WHERE name NOT IN ('Wheat','Waste','Bardana')").run();
 
 // "Flour" belonged to the first prototype. Keep historical records intact but hide it from new entries.
 db.prepare("UPDATE products SET is_active=0 WHERE name='Flour'").run();

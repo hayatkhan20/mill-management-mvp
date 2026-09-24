@@ -6,19 +6,20 @@ import { money, num, today } from '../utils';
 import { UserPlus } from 'lucide-react';
 import DateField, { formatDateDMY } from '../components/DateField';
 
-const initial=()=>({date:today(),source_id:'',bags:'',total_kg:'',rate_per_kg:'',bardana_rate_per_bag:'',remarks:''});
+const initial=()=>({date:today(),source_id:'',bags:'',total_kg:'',rate_per_kg:'',bardana_rate_per_bag:'',paid_amount:'',remarks:''});
 const blankSource=()=>({name:'',source_type:'Private',phone:'',address:''});
 
-export default function WheatIn({showHistory=true}){
+export default function WheatIn({showHistory=true,editRecord=null,onSaved}){
  const {t}=useUiPreferences();
  const [form,setForm]=useState(initial()),[sources,setSources]=useState([]),[rows,setRows]=useState([]),[error,setError]=useState(''),[success,setSuccess]=useState('');
  const [showAddSource,setShowAddSource]=useState(false),[newSource,setNewSource]=useState(blankSource());
  const load=async()=>{try{const [s,w]=await Promise.all([api.get('/sources'),api.get('/wheat-in')]);setSources(s);setRows(w)}catch(e){setError(e.message)}};
  useEffect(()=>{load()},[]);
+ useEffect(()=>{if(editRecord)setForm({date:editRecord.date,source_id:String(editRecord.source_id||''),bags:editRecord.bags??'',total_kg:editRecord.total_kg??'',rate_per_kg:editRecord.rate_per_kg??'',bardana_rate_per_bag:editRecord.bardana_rate_per_bag??'',paid_amount:editRecord.paid_amount??'',remarks:editRecord.remarks||''})},[editRecord]);
  const wheatCost=Number(form.total_kg||0)*Number(form.rate_per_kg||0);
  const bardanaCost=Number(form.bags||0)*Number(form.bardana_rate_per_bag||0);
  const total=wheatCost+bardanaCost;
- const submit=async e=>{e.preventDefault();setError('');setSuccess('');try{await api.post('/wheat-in',form);setForm(initial());setSuccess('Wheat and Bardana received. Source balance and stock were updated.');load()}catch(e){setError(e.message)}};
+ const submit=async e=>{e.preventDefault();setError('');setSuccess('');try{await api.post(editRecord?`/wheat-in/${editRecord.id}/update`:'/wheat-in',form);setForm(initial());setSuccess(editRecord?'Purchase updated.':'Wheat purchase saved.');await load();onSaved?.()}catch(e){setError(e.message)}};
  const addSource=async e=>{e.preventDefault();setError('');setSuccess('');try{const created=await api.post('/sources',newSource);const refreshed=await api.get('/sources');setSources(refreshed);setForm(prev=>({...prev,source_id:String(created.id)}));setNewSource(blankSource());setShowAddSource(false);setSuccess(`${created.name} added and selected.`)}catch(e){setError(e.message)}};
 
  return <>
@@ -38,9 +39,9 @@ export default function WheatIn({showHistory=true}){
     <label>{t('wheatCost','Wheat Cost')}<input value={money(wheatCost)} disabled/></label>
     <label>{t('bardanaRateBag','Bardana Rate per Bag')}<input type="number" min="0" step="0.01" value={form.bardana_rate_per_bag} onChange={e=>setForm({...form,bardana_rate_per_bag:e.target.value})} placeholder="0 if included/free"/></label>
     <label>{t('bardanaCost','Bardana Cost')}<input value={money(bardanaCost)} disabled/></label>
-    <label className="span-2">{t('totalPurchaseCost','Total Purchase Cost')}<input value={money(total)} disabled/></label>
+    <label>{t('totalPurchaseCost','Total Purchase Cost')}<input value={money(total)} disabled/></label><label>Amount Paid<input type="number" min="0" max={total||undefined} step="0.01" value={form.paid_amount} onChange={e=>setForm({...form,paid_amount:e.target.value})}/></label>
     <label className="span-2">{t('remarks','Remarks')}<textarea value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})}/></label>
-    <div className="span-2"><button className="primary">{t('saveWheatPurchase','Save Wheat Purchase')}</button></div>
+    <div className="span-2"><button className="primary">{editRecord?'Save Changes':t('saveWheatPurchase','Save Wheat Purchase')}</button></div>
    </form></Card>
 
    {showHistory&&<Card className="section-card-below"><h3>Recent Wheat Purchases</h3>{rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Bags</th><th>Wheat KG</th><th>Wheat Cost</th><th>Bardana Cost</th><th>Total</th></tr></thead><tbody>
