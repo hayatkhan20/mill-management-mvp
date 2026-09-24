@@ -9,12 +9,12 @@ const initial=()=>({date:today(),wheat_consumed:'',remarks:'',items:[]});
 
 export default function Production(){
   const {t}=useUiPreferences();
-  const [form,setForm]=useState(initial()),[products,setProducts]=useState([]),[rows,setRows]=useState([]),[error,setError]=useState(''),[success,setSuccess]=useState('');
+  const [form,setForm]=useState(initial()),[products,setProducts]=useState([]),[rows,setRows]=useState([]),[editingId,setEditingId]=useState(null),[error,setError]=useState(''),[success,setSuccess]=useState('');
 
   const load=async()=>{
     try{
       const [production,productRows]=await Promise.all([api.get('/production'),api.get('/products')]);
-      const activeProducts=productRows.filter(p=>p.name!=='Wheat');
+      const activeProducts=productRows.filter(p=>!['Wheat','Bardana'].includes(p.name));
       setRows(production);
       setProducts(activeProducts);
       setForm(prev=>({
@@ -37,14 +37,15 @@ export default function Production(){
   const submit=async e=>{
     e.preventDefault();setError('');setSuccess('');
     try{
-      await api.post('/production',form);
+      await api.post(editingId?`/production/${editingId}/update`:'/production',form);
+      setEditingId(null);
       setForm({
         date:today(),
         wheat_consumed:'',
         remarks:'',
         items:products.map(p=>({product_id:p.id,qty_kg:''}))
       });
-      setSuccess('Production record saved and stock updated.');
+      setSuccess(editingId?'Production record updated.':'Production record saved and stock updated.');
       const production=await api.get('/production');
       setRows(production);
     }catch(e){setError(e.message)}
@@ -73,14 +74,14 @@ export default function Production(){
         </div>
 
         <label style={{marginTop:16}}>{t('remarks','Remarks')}<textarea value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})}/></label>
-        <div className="actions"><button className="primary">{t('saveProduction','Save Production')}</button></div>
+        <div className="actions">{editingId&&<button type="button" className="secondary" onClick={()=>{setEditingId(null);setForm({date:today(),wheat_consumed:'',remarks:'',items:products.map(p=>({product_id:p.id,qty_kg:''}))})}}>Cancel Edit</button>}<button className="primary">{editingId?'Save Changes':t('saveProduction','Save Production')}</button></div>
       </form>
     </Card>
 
     <Card className="section-card-below">
       <h3>{t('recentProduction','Recent Production')}</h3>
-      {rows.length?<div className="table-wrap"><table><thead><tr><th>{t('date','Date')}</th><th>{t('wheatUsed','Wheat Used')}</th><th>{t('production','Production')}</th></tr></thead><tbody>
-        {rows.slice(0,15).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td>{num(r.wheat_consumed)} KG</td><td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong>{num(i.qty_kg)} KG</strong></div>):'—'}</td></tr>)}
+      {rows.length?<div className="table-wrap"><table><thead><tr><th>{t('date','Date')}</th><th>{t('wheatUsed','Wheat Used')}</th><th>{t('production','Production')}</th><th></th></tr></thead><tbody>
+        {rows.slice(0,15).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td>{num(r.wheat_consumed)} KG</td><td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong>{num(i.qty_kg)} KG</strong></div>):'—'}</td><td><button className="link-btn" onClick={()=>{setEditingId(r.id);setForm({date:r.date,wheat_consumed:r.wheat_consumed,remarks:r.remarks||'',items:products.map(p=>({product_id:p.id,qty_kg:r.items?.find(i=>String(i.product_id)===String(p.id))?.qty_kg||''}))});window.scrollTo({top:0,behavior:'smooth'})}}>Edit</button></td></tr>)}
       </tbody></table></div>:<Empty/>}
     </Card>
   </>;
