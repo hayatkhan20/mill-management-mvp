@@ -6,3 +6,10 @@ const localIso = () => {
 };
 export const today = () => localIso().slice(0, 10);
 export const monthNow = () => localIso().slice(0, 7);
+
+export const printNamed = (name) => {
+  const oldTitle = document.title;
+  document.title = String(name || 'Mill Management').replace(/[\\/:*?"<>|]+/g, '-');
+  window.print();
+  setTimeout(() => { document.title = oldTitle; }, 500);
+};
