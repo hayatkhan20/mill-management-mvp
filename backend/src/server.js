@@ -490,6 +490,8 @@ app.post('/api/wheat-in/:id/update', (req, res) => {
       db.prepare("DELETE FROM source_payments WHERE reference_type='wheat_in' AND reference_id=?").run(id);
       db.prepare("DELETE FROM stock_movements WHERE reference_type='wheat_in' AND reference_id=?").run(id);
       db.prepare("DELETE FROM bardana_movements WHERE reference_type='wheat_in' AND reference_id=?").run(id);
+      if(currentProductStock(wheat.id)+totalKg < -0.001) throw new Error('Cannot reduce this purchase below Wheat already used or sold later.');
+      if(bardanaStock().current+bags < -0.001) throw new Error('Cannot reduce Bardana below bags already used or sold later.');
       db.prepare(`UPDATE wheat_in SET date=?,source_id=?,source_type=?,source_name=?,bags=?,total_kg=?,rate_per_kg=?,total_cost=?,bardana_rate_per_bag=?,bardana_cost=?,paid_amount=?,remarks=? WHERE id=?`)
         .run(date,sourceId,source.source_type,source.name,bags,totalKg,rate,totalCost,bardanaRate,bardanaCost,paidAmount,remarks,id);
       db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`)
@@ -568,6 +570,7 @@ app.post('/api/bardana-purchases/:id/update', (req,res)=>{
     db.transaction(()=>{
       db.prepare("DELETE FROM source_payments WHERE reference_type='bardana_purchase' AND reference_id=?").run(id);
       db.prepare("DELETE FROM bardana_movements WHERE reference_type='bardana_purchase' AND reference_id=?").run(id);
+      if(bardanaStock().current+quantity < -0.001) throw new Error('Cannot reduce this purchase below Bardana already used or sold later.');
       db.prepare('UPDATE bardana_purchases SET date=?,source_id=?,quantity=?,rate_per_bag=?,total_cost=?,paid_amount=?,remarks=? WHERE id=?')
         .run(date,sourceId,quantity,rate,totalCost,paidAmount,remarks,id);
       db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?)`)
@@ -666,6 +669,16 @@ app.post('/api/production/:id/update', (req,res)=>{
     db.transaction(()=>{
       db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(id);
       if(wheatConsumed>currentProductStock(wheat.id)+0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
+      for(const item of normalizedItems){
+        if(currentProductStock(item.productId)+item.qtyKg < -0.001) throw new Error(`Cannot reduce ${item.product.name} production below quantity already sold or consumed later.`);
+      }
+      const oldProductIds=db.prepare('SELECT product_id FROM production_items WHERE production_id=?').all(id).map(r=>r.product_id);
+      for(const productId of oldProductIds){
+        if(!normalizedItems.some(i=>i.productId===productId) && currentProductStock(productId) < -0.001){
+          const p=db.prepare('SELECT name FROM products WHERE id=?').get(productId);
+          throw new Error(`Cannot remove ${p.name} production because later records already use it.`);
+        }
+      }
       db.prepare('DELETE FROM production_items WHERE production_id=?').run(id);
       db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?').run(date,wheatConsumed,remarks,id);
       const insertItem=db.prepare('INSERT INTO production_items (production_id,product_id,qty_kg) VALUES (?,?,?)');
