@@ -1,21 +1,21 @@
 @echo off
 setlocal
-set "ROOT=%~dp0"
+set ROOT=%~dp0
 
 echo ==========================================
 echo   Mill Management - Data Backup
 echo ==========================================
 echo.
 
-if not exist "%ROOT%runtime\node.exe" (
-  echo Portable runtime is missing.
-  echo Please run Setup Mill Manager.bat from the complete package.
+if not exist "%ROOT%backend\node_modules" (
+  echo Application dependencies are not installed.
+  echo Run install.bat first.
   pause
   exit /b 1
 )
 
 cd /d "%ROOT%backend"
-"%ROOT%runtime\node.exe" src\backup.js
+call npm run backup
 
 if errorlevel 1 (
   echo.
