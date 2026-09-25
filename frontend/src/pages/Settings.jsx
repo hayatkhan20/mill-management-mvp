@@ -2,7 +2,7 @@ import { useState } from 'react';
 import Products from './Products';
 import OpeningData from './OpeningData';
 import { Card } from '../components/Common';
-import { Moon, Sun } from 'lucide-react';
+import { ExternalLink, Globe2, Linkedin, Moon, Sun } from 'lucide-react';
 import { useUiPreferences } from '../context/UiPreferences';
 
 export default function Settings(){
@@ -14,6 +14,7 @@ export default function Settings(){
       <button className={tab==='preferences'?'primary':'secondary'} onClick={()=>setTab('preferences')}>{t('appearance','Appearance')}</button>
       <button className={tab==='products'?'primary':'secondary'} onClick={()=>setTab('products')}>{t('products','Products')}</button>
       <button className={tab==='opening'?'primary':'secondary'} onClick={()=>setTab('opening')}>{t('openingData','Opening Data')}</button>
+      <button className={tab==='about'?'primary':'secondary'} onClick={()=>setTab('about')}>{t('about','About')}</button>
     </div>
 
     {tab==='preferences'&&<Card>
@@ -39,5 +40,32 @@ export default function Settings(){
 
     {tab==='products'&&<Products/>}
     {tab==='opening'&&<OpeningData/>}
+
+    {tab==='about'&&<Card className="about-software-card">
+      <div className="about-software">
+        <div>
+          <span className="about-eyebrow">{t('software','Software')}</span>
+          <h2>Mill Management System</h2>
+          <p>{t('softwareVersion','Version')} 1.0</p>
+        </div>
+
+        <div className="about-divider"/>
+
+        <div className="developer-profile">
+          <span className="about-eyebrow">{t('developedMaintainedBy','Developed & Maintained by')}</span>
+          <h3>Engineer Hayat Ullah Abid</h3>
+          <p>{t('softwareGISEngineer','Software & GIS Engineer')}</p>
+
+          <div className="developer-profile-links">
+            <a href="https://www.linkedin.com/in/hayat-gis" target="_blank" rel="noreferrer">
+              <Linkedin size={17}/> LinkedIn <ExternalLink size={13}/>
+            </a>
+            <a href="https://hayatkhan20.github.io/hayat" target="_blank" rel="noreferrer">
+              <Globe2 size={17}/> {t('portfolio','Portfolio')} <ExternalLink size={13}/>
+            </a>
+          </div>
+        </div>
+      </div>
+    </Card>}
   </>;
 }
