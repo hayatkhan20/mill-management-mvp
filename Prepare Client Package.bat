@@ -1,9 +1,11 @@
 @echo off
 setlocal
-set ROOT=%~dp0
-set RELEASE_ROOT=%ROOT%release
-set DEST=%RELEASE_ROOT%\Mill-Management-v1.0
-set ZIP=%RELEASE_ROOT%\Mill-Management-v1.0.zip
+
+set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
+set "RELEASE_ROOT=%ROOT%\release"
+set "DEST=%RELEASE_ROOT%\Mill-Management-v1.0"
+set "ZIP=%RELEASE_ROOT%\Mill-Management-v1.0.zip"
 
 echo ==========================================
 echo   Prepare Mill Management v1.0 Package
@@ -16,8 +18,8 @@ if not exist "%RELEASE_ROOT%" mkdir "%RELEASE_ROOT%"
 mkdir "%DEST%"
 
 echo Creating a clean client copy...
-robocopy "%ROOT%" "%DEST%" /E /NFL /NDL /NJH /NJS /NP ^
-  /XD "%ROOT%.git" "%ROOT%backend\node_modules" "%ROOT%frontend\node_modules" "%ROOT%frontend\dist" "%ROOT%backend\data" "%ROOT%backups" "%ROOT%release" ^
+robocopy "%ROOT%" "%DEST%" *.* /E /R:2 /W:2 /NFL /NDL /NJH /NJS /NP ^
+  /XD "%ROOT%\.git" "%ROOT%\backend\node_modules" "%ROOT%\frontend\node_modules" "%ROOT%\frontend\dist" "%ROOT%\backend\data" "%ROOT%\backups" "%ROOT%\release" ^
   /XF "*.db" "*.db-shm" "*.db-wal"
 
 if errorlevel 8 goto :error
