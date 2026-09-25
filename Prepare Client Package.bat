@@ -62,7 +62,7 @@ if not exist "%RELEASE_ROOT%" mkdir "%RELEASE_ROOT%"
 mkdir "%DEST%"
 
 robocopy "%ROOT%" "%DEST%" *.* /E /R:2 /W:2 /NFL /NDL /NJH /NJS /NP ^
-  /XD "%ROOT%\.git" "%ROOT%\frontend\node_modules" "%ROOT%\backend\data" "%ROOT%\backups" "%ROOT%\release" ^
+  /XD "%ROOT%\.git" "%ROOT%\developer" "%ROOT%\frontend\node_modules" "%ROOT%\backend\data" "%ROOT%\backups" "%ROOT%\release" ^
   /XF "*.db" "*.db-shm" "*.db-wal"
 
 if errorlevel 8 goto :error
