@@ -10,9 +10,9 @@ const __dirname = path.dirname(__filename);
 const dataDir = path.resolve(__dirname, '../data');
 const licensePath = path.join(dataDir, 'license.json');
 
-const PUBLIC_KEY = \`-----BEGIN PUBLIC KEY-----
+const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAFIvhs3ugy0fClRrh2uvYYp+aUfeTsf5WNcT6q7Vp4EQ=
------END PUBLIC KEY-----\`;
+-----END PUBLIC KEY-----`;
 
 const normalizeInstallationId = (value) => String(value || '').trim().toUpperCase();
 
@@ -25,17 +25,17 @@ const getMachineSource = () => {
         { encoding: 'utf8', windowsHide: true }
       );
       const match = output.match(/MachineGuid\s+REG_SZ\s+([^\r\n]+)/i);
-      if (match?.[1]) return \`windows:\${match[1].trim()}\`;
+      if (match?.[1]) return `windows:${match[1].trim()}`;
     } catch {}
   }
 
-  return \`fallback:\${os.hostname()}:\${process.env.COMPUTERNAME || ''}\`;
+  return `fallback:${os.hostname()}:${process.env.COMPUTERNAME || ''}`;
 };
 
 export const getInstallationId = () => {
   const digest = crypto
     .createHash('sha256')
-    .update(\`mill-manager-v1|\${getMachineSource()}\`)
+    .update(`mill-manager-v1|${getMachineSource()}`)
     .digest('hex')
     .toUpperCase()
     .slice(0, 20);
