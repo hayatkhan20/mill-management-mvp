@@ -4,6 +4,7 @@ import db from './db.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { activateLicense, getLicenseStatus } from './license.js';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
@@ -69,6 +70,29 @@ const bardanaStock = () => {
 };
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+app.get('/api/license/status', (_req, res) => {
+  res.json(getLicenseStatus());
+});
+
+app.post('/api/license/activate', (req, res) => {
+  try {
+    const activationCode = requiredText(req.body.activation_code, 'Activation code');
+    res.json(activateLicense(activationCode));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.use('/api', (req, res, next) => {
+  const status = getLicenseStatus();
+  if (status.licensed) return next();
+  res.status(403).json({
+    error: 'Mill Manager is not activated on this computer.',
+    code: 'LICENSE_REQUIRED',
+    installation_id: status.installation_id,
+  });
+});
 
 app.get('/api/products', (req, res) => {
   const includeInactive = String(req.query.all || '') === '1';

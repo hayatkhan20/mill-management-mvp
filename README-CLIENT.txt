@@ -9,8 +9,16 @@ FIRST TIME ONLY
       Setup Mill Manager.bat
 4. Wait for "Setup complete".
 5. The software will open automatically.
+6. On first use, the Activation screen will appear.
+7. Click "Copy ID" or "Send Installation ID on WhatsApp".
+8. Send the Installation ID to the developer.
+9. Paste the Activation Code provided by the developer.
+10. Click "Activate Software".
 
 Node.js does NOT need to be installed on this computer.
+
+The license is for one Windows computer and is non-transferable.
+Copying the application folder to another computer will require a separate activation.
 
 Setup creates:
 - A "Mill Manager" shortcut on the Desktop.
@@ -102,6 +110,18 @@ For an existing mill installation with real data:
 2. Transfer the application folder or restore the database carefully.
 3. Do not replace a real mill.db with an empty database.
 
+
+LICENSE
+-------
+This software is licensed for one Windows computer.
+
+The About section shows:
+- Licensed client / mill name
+- Single Computer, Non-transferable license
+- Installation ID
+
+If Windows is reinstalled or the software is moved to another computer,
+contact the developer for activation support.
 
 SOFTWARE VERSION
 ----------------
