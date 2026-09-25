@@ -17,13 +17,13 @@ if errorlevel 1 (
 
 echo Installing backend dependencies...
 cd /d "%ROOT%backend"
-call npm install
+call npm ci
 if errorlevel 1 goto :error
 
 echo.
 echo Installing frontend dependencies...
 cd /d "%ROOT%frontend"
-call npm install
+call npm ci
 if errorlevel 1 goto :error
 
 echo.
