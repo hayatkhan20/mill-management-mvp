@@ -3,54 +3,105 @@ MILL MANAGEMENT v1.0
 
 FIRST TIME ONLY
 ---------------
-1. Extract the full Mill-Management-v1.0 ZIP to a normal folder.
-2. Make sure Node.js 20 or newer is installed.
-3. Double-click: install.bat
-4. Wait until "Setup complete" appears.
+1. Extract the complete Mill-Management-v1.0 ZIP to a normal folder.
+2. Open the extracted folder.
+3. Double-click:
+      Setup Mill Manager.bat
+4. Wait for "Setup complete".
+5. The software will open automatically.
 
-Do not run the application directly from inside the ZIP file.
+Node.js does NOT need to be installed on this computer.
+
+Setup creates:
+- A "Mill Manager" shortcut on the Desktop.
+- Automatic background server startup after Windows login.
+
+Do not run the software directly from inside the ZIP.
+
 
 DAILY USE
 ---------
-1. Double-click: Start Mill Manager.bat
-2. Your browser will open automatically.
-3. Keep the Mill Management Server window open while using the software.
-4. When finished, close the browser and then close the server window.
+Normally, simply double-click:
+
+    Mill Manager
+
+on the Desktop.
+
+The shortcut will:
+- Start the local Mill Management server if it is not already running.
+- Open the application in the default browser.
+
+Application address:
+
+    http://localhost:4000
+
+There is no need to open Command Prompt, npm, VS Code, or Node.js manually.
+
+
+AFTER RESTARTING WINDOWS
+------------------------
+The Mill Management server starts automatically in the background after
+the user logs into Windows.
+
+The user only needs to click the Desktop "Mill Manager" shortcut to open
+the software in the browser.
+
+If the application folder is moved to another location after setup,
+run "Setup Mill Manager.bat" again so the shortcuts use the new location.
+
 
 FIRST CLIENT DATA
 -----------------
 This release starts with a clean database.
 
 Before normal daily use:
-1. Go to Settings.
+1. Open Settings.
 2. Open Opening Data.
-3. Enter the current opening balances/stocks from the manual books:
+3. Enter the current position from the manual books:
    - Product stock
    - Bardana
    - Customer balances
    - Source balances
 
-Do not enter old transactions unless they are specifically required.
-Opening Data is intended to carry the current manual-book position into the software.
+Opening Data is intended to bring the current manual-book position into
+the software without recreating every old transaction.
+
 
 BACKUP
 ------
-Run "Backup Data.bat" regularly.
+Double-click:
 
-A dated database backup will be created inside:
-backups\
+    Backup Data.bat
+
+A dated database backup is created inside:
+
+    backups\
 
 Recommended:
-- Backup at the end of each working day.
-- Copy the backups folder to a USB drive or another computer periodically.
+- Make a backup at the end of each working day.
+- Periodically copy the backups folder to a USB drive or another computer.
+
 
 IMPORTANT DATA FILE
 -------------------
 The live database is:
 
-backend\data\mill.db
+    backend\data\mill.db
 
-Do not delete or rename this file after real data has been entered.
+Do not delete, rename, or manually edit this file after real data has
+been entered.
+
+
+TRANSFER TO ANOTHER COMPUTER
+----------------------------
+The clean ZIP can be copied to another Windows computer and installed
+using "Setup Mill Manager.bat".
+
+For an existing mill installation with real data:
+1. Make a backup first.
+2. Transfer the application folder or restore the database carefully.
+3. Do not replace a real mill.db with an empty database.
+
 
 SOFTWARE VERSION
 ----------------
@@ -61,12 +112,14 @@ Engineer Hayat Ullah Abid
 LinkedIn: https://www.linkedin.com/in/hayat-gis
 Portfolio: https://hayatkhan20.github.io/hayat
 
+
 SUPPORT
 -------
-If an issue appears during real use, note:
-- What screen you were using
-- What you entered
-- The exact error message
-- A screenshot if possible
+If an issue appears, record:
+- Screen/page being used
+- What was entered
+- Exact error message
+- Screenshot if possible
 
-Do not reinstall or delete the database to fix an issue without first making a backup.
+Do not delete or reinstall the database as a troubleshooting step
+without making a backup first.
