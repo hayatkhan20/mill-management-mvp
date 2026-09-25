@@ -192,3 +192,37 @@
   .developer-footer{display:none}
   .about-software-card{max-width:none}
 }
+
+
+/* Software activation */
+.app-loading{min-height:100vh;display:grid;place-items:center;font-size:18px;font-weight:600}
+.license-screen{min-height:100vh;display:grid;place-items:center;padding:24px;background:#f2f6f4}
+.license-card{width:min(560px,100%);background:#fff;border:1px solid #dfe7e3;border-radius:18px;padding:34px;box-shadow:0 16px 44px rgba(24,61,45,.10)}
+.license-card h1{margin:14px 0 6px;font-size:28px}
+.license-card>p{margin:0 0 24px;color:#718078}
+.license-icon{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;background:#eaf2ee;color:#1f6045}
+.installation-box{display:grid;grid-template-columns:1fr auto;gap:8px 12px;align-items:center;background:#f5f8f6;border:1px solid #dfe7e3;border-radius:12px;padding:16px;margin-bottom:12px}
+.installation-box span{grid-column:1/-1;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#718078}
+.installation-box strong{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:17px;letter-spacing:.04em}
+.license-whatsapp{width:100%;margin-bottom:20px;text-decoration:none}
+.license-form{display:grid;gap:12px}
+.license-form label{display:grid;gap:7px;font-weight:600}
+.license-form textarea{min-height:110px;resize:vertical}
+.license-support{text-align:center;margin-top:18px;font-size:13px;color:#718078}
+.license-support a{color:#1f6045;font-weight:600;text-decoration:none}
+.license-summary{display:grid;gap:5px;margin-top:14px;padding:12px 14px;border-radius:10px;background:#f4f8f6;font-size:13px;color:#506159}
+
+:root[data-theme="dark"] .license-screen{background:#121a16}
+:root[data-theme="dark"] .license-card{background:#1b2620;border-color:#304239}
+:root[data-theme="dark"] .installation-box,
+:root[data-theme="dark"] .license-summary{background:#223029;border-color:#304239}
+:root[data-theme="dark"] .license-card>p,
+:root[data-theme="dark"] .license-support,
+:root[data-theme="dark"] .installation-box span,
+:root[data-theme="dark"] .license-summary{color:#a7b7ae}
+
+@media(max-width:600px){
+  .license-card{padding:24px}
+  .installation-box{grid-template-columns:1fr}
+  .installation-box span{grid-column:auto}
+}
