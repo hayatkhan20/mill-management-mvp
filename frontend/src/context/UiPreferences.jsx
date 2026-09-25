@@ -54,7 +54,7 @@ const translations = {
     reference:'حوالہ', purchase:'خریداری', payment:'ادائیگی', editSource:'ذریعہ میں ترمیم',
     editSourceDetails:'ذریعہ تفصیل میں ترمیم', currentBalance:'موجودہ بیلنس', paySource:'ذریعہ کو ادائیگی',
     pay:'ادا کریں', settled:'مکمل ادائیگی', searchCustomers:'نام، فون یا پتہ سے تلاش',
-    searchSources:'نام، قسم، فون یا پتہ سے تلاش'
+    searchSources:'نام، قسم، فون یا پتہ سے تلاش', about:'متعلق', software:'سافٹ ویئر', softwareVersion:'ورژن', developedBy:'تیار کردہ', developedMaintainedBy:'تیار کردہ اور دیکھ بھال', softwareGISEngineer:'سافٹ ویئر اور GIS انجینئر', portfolio:'پورٹ فولیو'
   }
 };
 
