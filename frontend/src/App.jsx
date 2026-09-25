@@ -34,6 +34,12 @@ export default function App(){
   const Page=pages[page];
 
   useEffect(()=>{
+    if(import.meta.env.DEV){
+      setLicense({licensed:true,development:true});
+      setLicenseLoading(false);
+      return;
+    }
+
     api.get('/license/status')
       .then(setLicense)
       .catch(()=>setLicense({licensed:false,installation_id:'Unavailable'}))
