@@ -10,7 +10,7 @@ if not exist "%ROOT%frontend\dist\index.html" (
 )
 
 echo Starting Mill Management v1.0...
-start "Mill Management Server" cmd /k "cd /d "%ROOT%backend" && npm start"
+start "Mill Management Server" cmd /k "cd /d ""%ROOT%backend"" && npm start"
 
 timeout /t 3 /nobreak >nul
 start "" http://localhost:4000
