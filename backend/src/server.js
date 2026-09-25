@@ -1,9 +1,15 @@
 import express from 'express';
 import cors from 'cors';
 import db from './db.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const frontendDist = path.resolve(__dirname, '../../frontend/dist');
 
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
@@ -1204,11 +1210,25 @@ app.get('/api/reports/outstanding', (_req, res) => {
   res.json(rows);
 });
 
+// Serve the production React build when frontend/dist is available.
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api/')) return next();
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
+
+app.use('/api', (_req, res) => {
+  res.status(404).json({ error: 'API route not found' });
+});
+
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: 'Unexpected server error' });
 });
 
 app.listen(PORT, () => {
-  console.log(`Mill Management API running at http://localhost:${PORT}`);
+  console.log(`Mill Management v1.0 running at http://localhost:${PORT}`);
 });
