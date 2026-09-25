@@ -3,7 +3,7 @@ import { useUiPreferences } from '../context/UiPreferences';
 import { api } from '../api';
 import { Card, Empty, ErrorBox, SuccessBox } from '../components/Common';
 import { money, num, printNamed, today } from '../utils';
-import { Plus, Printer, Search, Trash2, UserPlus } from 'lucide-react';
+import { MessageCircle, Plus, Printer, Search, Trash2, UserPlus } from 'lucide-react';
 import DateField, { formatDateDMY } from '../components/DateField';
 
 const blankItem=()=>({product_id:'',bag_size:'20',custom_bag_size:'',bags:'',total_kg:'',rate:''});
@@ -167,5 +167,30 @@ function AddCustomerModal({customer,setCustomer,onClose,onSave}){
 
 export function Invoice({sale,onClose}){
  const print=()=>printNamed(`${sale.customer_name}-${formatDateDMY(sale.date).replaceAll('/','-')}-${sale.bill_no}`);
- return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="primary" onClick={print}><Printer size={16}/> Print Bill</button></div><div className="invoice"><div className="invoice-head"><div><h2>FLOUR MILL</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{formatDateDMY(sale.date)}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Unit</th><th>Quantity</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=>{const bardana=i.product_name==='Bardana';return <tr key={i.id}><td>{i.product_name}</td><td>{bardana?'Count':`${num(i.bag_size)} KG / Bag`}</td><td>{num(i.bags)} {bardana?'Bags':'Bags'}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>})}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>
+
+ const shareWhatsApp=async()=>{
+   const itemLines=(sale.items||[]).map(i=>{
+     const bardana=i.product_name==='Bardana';
+     const qty=bardana?`${num(i.bags)} bags`:`${num(i.bags)} x ${num(i.bag_size)} KG`;
+     return `- ${i.product_name}: ${qty} - ${money(i.amount)}`;
+   }).join('\n');
+
+   const message=[
+     'FLOUR MILL - Sales Bill',
+     `Bill: ${sale.bill_no}`,
+     `Date: ${formatDateDMY(sale.date)}`,
+     `Customer: ${sale.customer_name}`,
+     '',
+     itemLines,
+     '',
+     `Total: ${money(sale.total_amount)}`,
+     `Received: ${money(sale.received_amount)}`,
+     `Pending: ${money(sale.pending_amount)}`
+   ].filter(Boolean).join('\n');
+
+   await navigator.clipboard.writeText(message);
+   window.open('https://web.whatsapp.com/','_blank','noopener,noreferrer');
+ };
+
+ return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="secondary" onClick={shareWhatsApp}><MessageCircle size={16}/> Copy & Open WhatsApp</button><button className="primary" onClick={print}><Printer size={16}/> Print Bill</button></div><div className="invoice"><div className="invoice-head"><div><h2>FLOUR MILL</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{formatDateDMY(sale.date)}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Unit</th><th>Quantity</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=>{const bardana=i.product_name==='Bardana';return <tr key={i.id}><td>{i.product_name}</td><td>{bardana?'Count':`${num(i.bag_size)} KG / Bag`}</td><td>{num(i.bags)} {bardana?'Bags':'Bags'}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>})}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>
 }
