@@ -30,6 +30,16 @@ export default function Layout({ page, setPage, children }) {
             </button>
           ))}
         </nav>
+
+        <div className="developer-footer">
+          <span>{t('developedBy','Developed by')}</span>
+          <a href="https://hayatkhan20.github.io/hayat" target="_blank" rel="noreferrer">Engineer Hayat Ullah Abid</a>
+          <div className="developer-footer-links">
+            <a href="https://www.linkedin.com/in/hayat-gis" target="_blank" rel="noreferrer">LinkedIn</a>
+            <span>•</span>
+            <a href="https://hayatkhan20.github.io/hayat" target="_blank" rel="noreferrer">{t('portfolio','Portfolio')}</a>
+          </div>
+        </div>
       </aside>
       <main className="main-area">
         <header className="topbar">
