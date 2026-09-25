@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Purchases from './pages/Purchases';
@@ -11,6 +11,8 @@ import Appendix from './pages/Appendix';
 import Expenses from './pages/Expenses';
 import Settings from './pages/Settings';
 import { UiPreferencesProvider } from './context/UiPreferences';
+import LicenseActivation from './pages/LicenseActivation';
+import { api } from './api';
 
 const pages={
   dashboard:Dashboard,
@@ -27,6 +29,22 @@ const pages={
 
 export default function App(){
   const [page,setPage]=useState('dashboard');
+  const [license,setLicense]=useState(null);
+  const [licenseLoading,setLicenseLoading]=useState(true);
   const Page=pages[page];
-  return <UiPreferencesProvider><Layout page={page} setPage={setPage}><Page key={page}/></Layout></UiPreferencesProvider>;
+
+  useEffect(()=>{
+    api.get('/license/status')
+      .then(setLicense)
+      .catch(()=>setLicense({licensed:false,installation_id:'Unavailable'}))
+      .finally(()=>setLicenseLoading(false));
+  },[]);
+
+  if(licenseLoading) return <div className="app-loading">Starting Mill Manager...</div>;
+
+  return <UiPreferencesProvider>
+    {license?.licensed
+      ? <Layout page={page} setPage={setPage}><Page key={page}/></Layout>
+      : <LicenseActivation status={license||{}} onActivated={setLicense}/>}
+  </UiPreferencesProvider>;
 }
