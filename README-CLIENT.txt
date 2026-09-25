@@ -3,9 +3,12 @@ MILL MANAGEMENT v1.0
 
 FIRST TIME ONLY
 ---------------
-1. Make sure Node.js 20 or newer is installed.
-2. Double-click: install.bat
-3. Wait until "Setup complete" appears.
+1. Extract the full Mill-Management-v1.0 ZIP to a normal folder.
+2. Make sure Node.js 20 or newer is installed.
+3. Double-click: install.bat
+4. Wait until "Setup complete" appears.
+
+Do not run the application directly from inside the ZIP file.
 
 DAILY USE
 ---------
