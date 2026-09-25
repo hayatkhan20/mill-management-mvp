@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 4000;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendDist = path.resolve(__dirname, '../../frontend/dist');
+const LICENSE_BYPASS = process.env.MILL_LICENSE_BYPASS === '1';
 
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
@@ -72,6 +73,14 @@ const bardanaStock = () => {
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/license/status', (_req, res) => {
+  if (LICENSE_BYPASS) {
+    return res.json({
+      licensed: true,
+      installation_id: 'DEV-MODE',
+      client_name: 'Developer Mode',
+      development: true,
+    });
+  }
   res.json(getLicenseStatus());
 });
 
@@ -85,6 +94,7 @@ app.post('/api/license/activate', (req, res) => {
 });
 
 app.use('/api', (req, res, next) => {
+  if (LICENSE_BYPASS) return next();
   const status = getLicenseStatus();
   if (status.licensed) return next();
   res.status(403).json({
