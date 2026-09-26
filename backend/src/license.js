@@ -11,7 +11,7 @@ const dataDir = path.resolve(__dirname, '../data');
 const licensePath = path.join(dataDir, 'license.json');
 
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MCowBQYDK2VwAyEAFIvhs3ugy0fClRrh2uvYYp+aUfeTsf5WNcT6q7Vp4EQ=
+MCowBQYDK2VwAyEAaUXXjBUYVDJhisQ9X/BQprw046tIE7YWYGsMbVN70HA=
 -----END PUBLIC KEY-----`;
 
 const normalizeInstallationId = (value) => String(value || '').trim().toUpperCase();
