@@ -10,14 +10,14 @@ const balanceText=(value)=>Number(value)<0?`Advance ${money(Math.abs(value))}`:`
 
 export default function Customers(){
  const {t}=useUiPreferences();
- const [rows,setRows]=useState([]),[selected,setSelected]=useState(null),[error,setError]=useState(''),[success,setSuccess]=useState('');
+ const [rows,setRows]=useState([]),[summary,setSummary]=useState(null),[selected,setSelected]=useState(null),[error,setError]=useState(''),[success,setSuccess]=useState('');
  const [search,setSearch]=useState('');
  const [editing,setEditing]=useState(false);
  const [editCustomer,setEditCustomer]=useState({name:'',phone:'',address:''});
  const [newCustomer,setNewCustomer]=useState({name:'',phone:'',address:''});
  const [payment,setPayment]=useState({date:today(),amount:'',note:''}),[editingPaymentId,setEditingPaymentId]=useState(null),[ledgerSale,setLedgerSale]=useState(null);
 
- const load=()=>api.get('/customers').then(setRows).catch(e=>setError(e.message));
+ const load=()=>Promise.all([api.get('/customers'),api.get('/customers-summary')]).then(([r,s])=>{setRows(r);setSummary(s)}).catch(e=>setError(e.message));
  useEffect(() => { load(); }, []);
 
  const add=async e=>{e.preventDefault();setError('');try{await api.post('/customers',newCustomer);setNewCustomer({name:'',phone:'',address:''});setSuccess('Customer added.');load();}catch(e){setError(e.message)}};
@@ -32,6 +32,11 @@ export default function Customers(){
  return <>
   <PageHeader title={t('customers','Customers')}/>
   <ErrorBox error={error}/><SuccessBox text={success}/>
+  {summary&&<div className="stats-grid mini">
+    <Card><div className="stat-label">Total Received</div><div className="stat-value">{money(summary.total_received)}</div></Card>
+    <Card><div className="stat-label">Total Receivable / Debit</div><div className="stat-value pending">{money(summary.total_receivable)}</div></Card>
+    <Card><div className="stat-label">Customer Advance</div><div className="stat-value">{money(summary.total_customer_advance)}</div></Card>
+  </div>}
   <div>
    <Card><h3>{t('addCustomer','Add Customer')}</h3><form className="form-grid" onSubmit={add}><label className="span-2">{t('name','Name')}<input required value={newCustomer.name} onChange={e=>setNewCustomer({...newCustomer,name:e.target.value})}/></label><label>{t('phone','Phone')}<input value={newCustomer.phone} onChange={e=>setNewCustomer({...newCustomer,phone:e.target.value})}/></label><label>{t('address','Address')}<input value={newCustomer.address} onChange={e=>setNewCustomer({...newCustomer,address:e.target.value})}/></label><div className="span-2"><button className="primary">{t('addCustomer','Add Customer')}</button></div></form></Card>
    <Card className="section-card-below"><h3>{t('customerAccounts','Customer Accounts')}</h3><input aria-label="Search customers" placeholder={t('searchCustomers','Search by name, phone or address')} value={search} onChange={e=>setSearch(e.target.value)}/>{filteredRows.length?<div className="table-wrap"><table><thead><tr><th>{t('customer','Customer')}</th><th>{t('purchased','Purchased')}</th><th>{t('paid','Paid')}</th><th>{t('balance','Balance')}</th></tr></thead><tbody>{filteredRows.map(r=><tr className="clickable" key={r.id} onClick={()=>open(r.id)}><td><strong>{r.name}</strong><small>{r.phone}</small></td><td>{money(r.total_purchased)}</td><td>{money(r.total_paid)}</td><td className={r.balance>0?'pending':r.balance<0?'advance':''}>{balanceText(r.balance)}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
