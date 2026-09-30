@@ -6,7 +6,7 @@ import { money, monthNow, today } from '../utils';
 import DateField, { formatDateDMY } from '../components/DateField';
 
 const blank=()=>({date:today(),amount:'',note:''});
-const recurringCategories=['Electricity Bill','Meal','Employee Salaries','Machinery Cost'];
+const recurringCategories=['Electricity Bill','Meal','Machinery Cost'];
 
 export default function Expenses(){
  const {t}=useUiPreferences();
@@ -58,6 +58,7 @@ export default function Expenses(){
    {data&&<div className="stats-grid mini">
     <Card><div className="stat-label">{t('wheatPurchases','Wheat Purchases')}</div><div className="stat-value">{money(data.summary.wheat)}</div></Card>
     <Card><div className="stat-label">{t('bardanaPurchases','Bardana Purchases')}</div><div className="stat-value">{money(data.summary.bardana)}</div></Card>
+    <Card><div className="stat-label">Employee Salaries</div><div className="stat-value">{money(data.summary.salary||0)}</div></Card>
     <Card><div className="stat-label">{t('otherExpenses','Other Expenses')}</div><div className="stat-value">{money(data.summary.other)}</div></Card>
    </div>}
    {data&&<div className="note-card"><strong>{t('totalExpenses','Total Expenses')}: {money(data.summary.total)}</strong></div>}
@@ -100,10 +101,10 @@ export default function Expenses(){
   </div>
 
   <div style={{marginTop:18}}><Card>
-   <h3>{t('automaticPurchaseExpenses','Automatic Purchase Expenses')}</h3>
+   <h3>Automatic Expenses</h3>
    {data?.automatic?.length?<div className="table-wrap"><table><thead><tr><th>{t('date','Date')}</th><th>{t('type','Type')}</th><th>{t('source','Source')}</th><th>{t('amount','Amount')}</th></tr></thead><tbody>
     {data.automatic.map((r,i)=><tr key={`${r.type}-${r.id}-${i}`}><td>{formatDateDMY(r.date)}</td><td>{r.type}</td><td>{r.source||'—'}</td><td>{money(r.amount)}</td></tr>)}
-   </tbody></table></div>:<Empty text="No Wheat or Bardana purchase expenses for this month."/>}
+   </tbody></table></div>:<Empty text="No automatic expenses for this month."/>}
   </Card></div>
  </>;
 }

@@ -7,3 +7,4 @@ backend/data/*.db-wal
 backups/*.db
 backend/data/license.json
 developer/license-private.pem
+release/

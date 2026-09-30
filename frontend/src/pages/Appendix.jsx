@@ -4,6 +4,7 @@ import { api } from '../api';
 import { Card, ErrorBox, PageHeader } from '../components/Common';
 import { num, today } from '../utils';
 import DateField from '../components/DateField';
+import BagQuantity from '../components/BagQuantity';
 
 export default function Appendix(){
  const {t}=useUiPreferences();
@@ -23,9 +24,9 @@ export default function Appendix(){
      <Card><div className="stat-label">{t('totalProductsProduced','Total Products Produced')}</div><div className="stat-value">{num(data.total_produced_kg)} KG</div></Card>
      <Card><div className="stat-label">{t('currentWheat','Current Wheat / Closing')}</div><div className="stat-value">{num(data.wheat_closing_kg)} KG</div></Card>
     </div>
-    <div className="table-wrap"><table><thead><tr><th>{t('product','Product')}</th><th>{t('producedKg','Produced KG')}</th><th>{t('productionPercent','Production %')}</th><th>{t('closingStockKg','Closing Stock KG')}</th><th>{t('closingBags','Closing Bags')}</th></tr></thead><tbody>
-     {data.rows.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td><td>{num(r.produced_kg)} KG</td><td>{num(r.percentage)}%</td><td>{num(r.closing_kg)} KG</td><td>—</td></tr>)}
-     <tr><td><strong>{t('total','Total')}</strong></td><td><strong>{num(data.total_produced_kg)} KG</strong></td><td><strong>{num(data.total_yield_percent)}%</strong></td><td></td><td></td></tr>
+    <div className="table-wrap"><table><thead><tr><th>{t('product','Product')}</th><th>Produced</th><th>{t('productionPercent','Production %')}</th><th>Closing Stock</th></tr></thead><tbody>
+     {data.rows.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td><td>{r.produced_breakdown_known?<><BagQuantity bags20={r.produced_bags_20} bags40={r.produced_bags_40}/><small className="record-kg">{num(r.produced_kg)} KG{Number(r.produced_loose_kg)>0?` • ${num(r.produced_loose_kg)} loose KG`:''}</small></>:<><strong>{num(r.produced_kg)} KG</strong><small>Bag breakdown not recorded</small></>}</td><td>{num(r.percentage)}%</td><td>{r.closing_breakdown_known?<><BagQuantity bags20={r.closing_bags_20} bags40={r.closing_bags_40}/><small className="record-kg">{num(r.closing_kg)} KG{Number(r.closing_loose_kg)>0?` • ${num(r.closing_loose_kg)} loose KG`:''}</small></>:<><strong>{num(r.closing_kg)} KG</strong><small>Bag breakdown not recorded</small></>}</td></tr>)}
+     <tr><td><strong>{t('total','Total')}</strong></td><td><strong>{num(data.total_produced_kg)} KG</strong></td><td><strong>{num(data.total_yield_percent)}%</strong></td><td></td></tr>
     </tbody></table></div>
    </>}
   </Card>

@@ -226,3 +226,22 @@
   .installation-box{grid-template-columns:1fr}
   .installation-box span{grid-column:auto}
 }
+
+
+/* Client workflow: bags + KG and physical stock */
+.production-entry-table input{min-width:90px}
+.production-entry-table td{vertical-align:middle}
+.physical-count-grid{display:grid;grid-template-columns:1.2fr repeat(4,1fr) 1.3fr auto;gap:10px;align-items:end}
+.physical-count-grid>div{display:flex;align-items:end}
+@media(max-width:1100px){.physical-count-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:760px){.physical-count-grid{grid-template-columns:1fr}}
+
+
+/* Mill records: bags are the primary display unit */
+.record-bags{display:block;color:inherit;white-space:nowrap;line-height:1.2}
+.bag-count{font-size:16px;font-weight:800}
+.bag-type{font-size:13px;font-weight:400;margin-left:1px}
+.bag-separator{font-size:12px;font-weight:400;color:#66776e}
+.record-kg{display:block;font-size:11px;color:#7c8b83;margin-top:4px;font-weight:500}
+:root[data-theme="dark"] .bag-separator{color:#9fb0a7}
+:root[data-theme="dark"] .record-kg{color:#9fb0a7}

@@ -32,6 +32,13 @@ const requiredText = (value, field) => {
   if (!text) throw new Error(`${field} is required`);
   return text;
 };
+const normalizeBagKg = (value, field = 'Quantity') => {
+  const bags20 = round2(asNumber(value?.bags_20 ?? 0, `${field} 20 KG bags`));
+  const bags40 = round2(asNumber(value?.bags_40 ?? 0, `${field} 40 KG bags`));
+  const looseKg = round2(asNumber(value?.loose_kg ?? value?.qty_kg ?? 0, `${field} loose KG`));
+  const totalKg = round2((bags20 * 20) + (bags40 * 40) + looseKg);
+  return { bags20, bags40, looseKg, totalKg };
+};
 
 const getProduct = (name) => db.prepare('SELECT * FROM products WHERE name = ?').get(name);
 const currentProductStock = (productId) => round2(
@@ -53,6 +60,13 @@ const sourceBalance = (sourceId) => {
   const bardana = db.prepare('SELECT COALESCE(SUM(total_cost),0) AS total FROM bardana_purchases WHERE source_id=?').get(sourceId).total;
   const payment = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM source_payments WHERE source_id=?').get(sourceId).total;
   return round2(Number(opening) + Number(wheat) + Number(bardana) - Number(payment));
+};
+
+const employeeBalance = (employeeId) => {
+  const employee = db.prepare('SELECT COALESCE(opening_balance,0) AS opening FROM employees WHERE id=?').get(employeeId);
+  const salary = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_salary_due WHERE employee_id=?').get(employeeId)?.total || 0;
+  const paid = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_payments WHERE employee_id=?').get(employeeId)?.total || 0;
+  return round2(Number(employee?.opening || 0) + Number(salary) - Number(paid));
 };
 
 const bardanaStock = () => {
@@ -102,6 +116,78 @@ app.use('/api', (req, res, next) => {
     code: 'LICENSE_REQUIRED',
     installation_id: status.installation_id,
   });
+});
+
+app.post('/api/opening/product-stock', (req, res) => {
+  try {
+    const date = req.body.date || today();
+    const productId = asNumber(req.body.product_id, 'Product', { min: 1, allowZero: false });
+    const product = db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name<>'Bardana'").get(productId);
+    if (!product) throw new Error('Select a valid product');
+    const qty = normalizeBagKg(req.body, 'Opening stock');
+    if (qty.totalKg <= 0) throw new Error('Enter opening stock in 20 KG bags, 40 KG bags or loose KG');
+
+    db.transaction(() => {
+      const existing = db.prepare('SELECT id FROM opening_product_stock WHERE product_id=?').get(productId);
+      if (existing) {
+        db.prepare("DELETE FROM stock_movements WHERE reference_type='opening_stock' AND reference_id=?").run(existing.id);
+        db.prepare('UPDATE opening_product_stock SET date=?,bags_20=?,bags_40=?,loose_kg=?,total_kg=? WHERE id=?')
+          .run(date, qty.bags20, qty.bags40, qty.looseKg, qty.totalKg, existing.id);
+        db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?,?)`).run(date, productId, qty.totalKg, 'IN', 'opening_stock', existing.id, 'Opening stock from manual records');
+      } else {
+        const r = db.prepare('INSERT INTO opening_product_stock (date,product_id,bags_20,bags_40,loose_kg,total_kg) VALUES (?,?,?,?,?,?)')
+          .run(date, productId, qty.bags20, qty.bags40, qty.looseKg, qty.totalKg);
+        db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?,?)`).run(date, productId, qty.totalKg, 'IN', 'opening_stock', r.lastInsertRowid, 'Opening stock from manual records');
+      }
+    })();
+
+    res.json({ product_id: productId, ...qty });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/bardana', (req, res) => {
+  try {
+    const date = req.body.date || today();
+    const bags = round2(asNumber(req.body.bags, 'Bardana bags', { min: 0, allowZero: false }));
+    db.transaction(() => {
+      db.prepare("DELETE FROM bardana_movements WHERE reference_type='opening_bardana'").run();
+      db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?)`).run(date, bags, 'IN', 'opening_bardana', 1, 'Opening Bardana from manual records');
+    })();
+    res.json({ bags });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/customer-balance', (req, res) => {
+  try {
+    const id = asNumber(req.body.customer_id, 'Customer', { min: 1, allowZero: false });
+    const amount = round2(asNumber(req.body.amount, 'Amount'));
+    const signed = req.body.balance_type === 'Advance' ? -amount : amount;
+    db.prepare('UPDATE customers SET opening_balance=?,opening_date=? WHERE id=?').run(signed, req.body.date || today(), id);
+    res.json({ id, opening_balance: signed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/source-balance', (req, res) => {
+  try {
+    const id = asNumber(req.body.source_id, 'Source', { min: 1, allowZero: false });
+    const amount = round2(asNumber(req.body.amount, 'Amount'));
+    const signed = req.body.balance_type === 'Advance' ? -amount : amount;
+    db.prepare('UPDATE sources SET opening_balance=?,opening_date=? WHERE id=?').run(signed, req.body.date || today(), id);
+    res.json({ id, opening_balance: signed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/employee-balance', (req, res) => {
+  try {
+    const id = asNumber(req.body.employee_id, 'Employee', { min: 1, allowZero: false });
+    const amount = round2(asNumber(req.body.amount, 'Amount'));
+    const signed = req.body.balance_type === 'Advance' ? -amount : amount;
+    db.prepare('UPDATE employees SET opening_balance=?,opening_date=? WHERE id=?').run(signed, req.body.date || today(), id);
+    res.json({ id, opening_balance: signed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.get('/api/products', (req, res) => {
@@ -192,15 +278,31 @@ app.post('/api/products/:id/toggle', (req, res) => {
 app.get('/api/dashboard', (_req, res) => {
   const date = today();
   const products = db.prepare(`
-    SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
+    SELECT p.id, p.name,
+      ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
     FROM products p
     LEFT JOIN stock_movements sm ON sm.product_id = p.id
     WHERE p.is_active=1 AND p.name<>'Bardana'
     GROUP BY p.id, p.name
     ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
-  `).all();
+  `).all().map((row) => {
+    const physical = db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg,date
+      FROM physical_stock_counts
+      WHERE product_id=?
+      ORDER BY date DESC,id DESC LIMIT 1
+    `).get(row.id);
 
-  const wheatToday = db.prepare('SELECT COALESCE(SUM(total_kg),0) AS kg FROM wheat_in WHERE date = ?').get(date).kg;
+    return {
+      ...row,
+      bags_20: round2(physical?.bags_20 || 0),
+      bags_40: round2(physical?.bags_40 || 0),
+      loose_kg: round2(physical?.loose_kg || 0),
+      bag_breakdown_known: Boolean(physical),
+    };
+  });
+
+  const wheatToday = db.prepare('SELECT COALESCE(SUM(total_kg),0) AS kg, COALESCE(SUM(bags),0) AS bags FROM wheat_in WHERE date = ?').get(date);
   const salesToday = db.prepare('SELECT COALESCE(SUM(total_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedOnSales = db.prepare('SELECT COALESCE(SUM(received_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedPayments = db.prepare('SELECT COALESCE(SUM(amount),0) AS amount FROM payments WHERE date = ?').get(date).amount;
@@ -215,7 +317,8 @@ app.get('/api/dashboard', (_req, res) => {
   res.json({
     date,
     stocks: products,
-    wheat_received_today: round2(wheatToday),
+    wheat_received_today: round2(wheatToday.kg),
+    wheat_bags_today: round2(wheatToday.bags),
     sales_today: round2(salesToday),
     received_today: round2(receivedOnSales + receivedPayments),
     total_pending: round2(pending),
@@ -323,6 +426,24 @@ app.get('/api/customers/:id', (req, res) => {
     balance: customerBalance(id),
     quantities,
     ledger,
+  });
+});
+
+app.get('/api/customers-summary', (_req, res) => {
+  const rows = db.prepare('SELECT id FROM customers').all();
+  let receivable = 0;
+  let advance = 0;
+  for (const row of rows) {
+    const balance = customerBalance(row.id);
+    if (balance > 0) receivable += balance;
+    if (balance < 0) advance += Math.abs(balance);
+  }
+  const receivedOnBills = db.prepare('SELECT COALESCE(SUM(received_amount),0) AS total FROM sales').get().total;
+  const laterPayments = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM payments').get().total;
+  res.json({
+    total_received: round2(Number(receivedOnBills) + Number(laterPayments)),
+    total_receivable: round2(receivable),
+    total_customer_advance: round2(advance),
   });
 });
 
@@ -673,108 +794,257 @@ app.get('/api/bardana/stock', (_req, res) => {
 
 app.get('/api/production', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
-  const rows = db.prepare('SELECT id,date,wheat_consumed,remarks,created_at FROM production ORDER BY date DESC, id DESC LIMIT ?').all(limit);
+  const rows = db.prepare('SELECT id,date,wheat_consumed,remarks,created_at FROM production ORDER BY date DESC,id DESC LIMIT ?').all(limit);
   const getItems = db.prepare(`
-    SELECT pi.id, pi.product_id, p.name AS product_name, pi.qty_kg
-    FROM production_items pi JOIN products p ON p.id=pi.product_id
-    WHERE pi.production_id=? ORDER BY p.name COLLATE NOCASE
+    SELECT pi.id,pi.product_id,p.name AS product_name,pi.qty_kg,
+      COALESCE(pc.bags_20,0) AS stock_bags_20,
+      COALESCE(pc.bags_40,0) AS stock_bags_40,
+      COALESCE(pc.loose_kg,0) AS stock_loose_kg,
+      COALESCE(pc.total_kg,0) AS physical_stock_kg
+    FROM production_items pi
+    JOIN products p ON p.id=pi.product_id
+    JOIN production pr ON pr.id=pi.production_id
+    LEFT JOIN physical_stock_counts pc ON pc.product_id=pi.product_id AND pc.date=pr.date
+    WHERE pi.production_id=?
+    ORDER BY p.name COLLATE NOCASE
   `);
-  res.json(rows.map((row) => ({ ...row, items: getItems.all(row.id) })));
+  res.json(rows.map(row => ({
+    ...row,
+    remarks: String(row.remarks || '').replace(/^\[Daily Stock Count\]\s*/, ''),
+    items: getItems.all(row.id),
+  })));
 });
 
-app.post('/api/production', (req, res) => {
-  try {
-    const date = req.body.date || today();
-    const wheatConsumed = asNumber(req.body.wheat_consumed ?? 0, 'Wheat consumed');
-    const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
-    const normalizedItems = rawItems
-      .map((item, index) => {
-        const productId = asNumber(item.product_id, `Product ${index + 1}`, { min: 1, allowZero: false });
-        const qtyKg = asNumber(item.qty_kg ?? 0, `Product ${index + 1} KG`);
-        if (qtyKg === 0) return null;
-        const product = db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-        if (!product || product.name === 'Wheat') throw new Error(`Product ${index + 1} is invalid`);
-        return { product, productId, qtyKg: round2(qtyKg) };
-      })
-      .filter(Boolean);
+const productionFromPhysicalStock = ({ productionId = null, date, wheatConsumed, rawItems, remarks }) => {
+  const wheat = getProduct('Wheat');
+  const items = (Array.isArray(rawItems) ? rawItems : []).map((item,index) => {
+    const productId = asNumber(item.product_id, `Product ${index+1}`, { min:1, allowZero:false });
+    const product = db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
+    if (!product) throw new Error(`Product ${index+1} is invalid`);
 
-    if (wheatConsumed === 0 && normalizedItems.length === 0) throw new Error('Enter wheat consumed or at least one produced product');
-    const seen = new Set();
-    for (const item of normalizedItems) {
-      if (seen.has(item.productId)) throw new Error(`${item.product.name} is entered more than once`);
-      seen.add(item.productId);
+    const hasCount = [item.bags_20,item.bags_40,item.loose_kg].some(v => String(v ?? '').trim() !== '');
+    if (!hasCount) return null;
+
+    const qty = normalizeBagKg(item, `${product.name} stock`);
+    const opening = round2(db.prepare(
+      'SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<?'
+    ).get(productId,date).total);
+
+    const previousPhysical = db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg
+      FROM physical_stock_counts
+      WHERE product_id=? AND date<?
+      ORDER BY date DESC LIMIT 1
+    `).get(productId,date);
+    const openingRecord = !previousPhysical ? db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg
+      FROM opening_product_stock
+      WHERE product_id=? AND date<?
+      ORDER BY date DESC LIMIT 1
+    `).get(productId,date) : null;
+    const previousKnown = Boolean(previousPhysical || openingRecord);
+    const previous = previousPhysical || openingRecord || { bags_20:0,bags_40:0,loose_kg:0,total_kg:opening };
+
+    const saleBreakdown = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN ABS(si.bag_size-20)<0.001 THEN si.bags ELSE 0 END),0) AS bags_20,
+        COALESCE(SUM(CASE WHEN ABS(si.bag_size-40)<0.001 THEN si.bags ELSE 0 END),0) AS bags_40,
+        COALESCE(SUM(CASE WHEN ABS(si.bag_size-20)>=0.001 AND ABS(si.bag_size-40)>=0.001 THEN si.total_kg ELSE 0 END),0) AS loose_kg,
+        COALESCE(SUM(si.total_kg),0) AS total_kg
+      FROM sale_items si JOIN sales s ON s.id=si.sale_id
+      WHERE si.product_id=? AND s.date=?
+    `).get(productId,date);
+
+    const consumptionBreakdown = db.prepare(`
+      SELECT
+        COALESCE(SUM(bags_20),0) AS bags_20,
+        COALESCE(SUM(bags_40),0) AS bags_40,
+        COALESCE(SUM(loose_kg),0) AS loose_kg,
+        COALESCE(SUM(qty_kg),0) AS total_kg
+      FROM product_consumption
+      WHERE product_id=? AND date=?
+    `).get(productId,date);
+
+    // The mill counts total physical stock. Production is the positive quantity
+    // required to reach that stock after accounting for today's outflow.
+    const productionKg = Math.max(0, round2(
+      qty.totalKg
+      + Number(saleBreakdown.total_kg||0)
+      + Number(consumptionBreakdown.total_kg||0)
+      - opening
+    ));
+
+    let productionBags20 = 0;
+    let productionBags40 = 0;
+    let productionLooseKg = 0;
+    let productionBreakdownKnown = false;
+
+    if (previousKnown) {
+      const candidate20 = Math.max(0, round2(
+        qty.bags20 + Number(saleBreakdown.bags_20||0) + Number(consumptionBreakdown.bags_20||0) - Number(previous.bags_20||0)
+      ));
+      const candidate40 = Math.max(0, round2(
+        qty.bags40 + Number(saleBreakdown.bags_40||0) + Number(consumptionBreakdown.bags_40||0) - Number(previous.bags_40||0)
+      ));
+      const candidateLoose = Math.max(0, round2(
+        qty.looseKg + Number(saleBreakdown.loose_kg||0) + Number(consumptionBreakdown.loose_kg||0) - Number(previous.loose_kg||0)
+      ));
+      const candidateKg = round2(candidate20*20 + candidate40*40 + candidateLoose);
+
+      if (Math.abs(candidateKg - productionKg) <= 0.01) {
+        productionBags20 = candidate20;
+        productionBags40 = candidate40;
+        productionLooseKg = candidateLoose;
+        productionBreakdownKnown = true;
+      }
     }
 
-    const wheat = getProduct('Wheat');
-    if (wheatConsumed > currentProductStock(wheat.id) + 0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
-    const remarks = String(req.body.remarks ?? '').trim();
+    return {
+      productId,
+      product,
+      ...qty,
+      opening,
+      previous,
+      previousKnown,
+      saleBreakdown,
+      consumptionBreakdown,
+      productionBags20,
+      productionBags40,
+      productionLooseKg,
+      productionBreakdownKnown,
+      productionKg,
+    };
+  }).filter(Boolean);
 
-    const tx = db.transaction(() => {
-      const r = db.prepare(`INSERT INTO production (date,wheat_consumed,flour_produced,suji_produced,remarks)
-        VALUES (?,?,0,0,?)`).run(date, wheatConsumed, remarks);
-      const productionId = r.lastInsertRowid;
-      const insertItem = db.prepare('INSERT INTO production_items (production_id,product_id,qty_kg) VALUES (?,?,?)');
-      const insertMovement = db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
-        VALUES (?,?,?,?,?,?,?)`);
-      if (wheatConsumed) insertMovement.run(date, wheat.id, -wheatConsumed, 'OUT', 'production', productionId, 'Wheat used / ground');
-      for (const item of normalizedItems) {
-        insertItem.run(productionId, item.productId, item.qtyKg);
-        insertMovement.run(date, item.productId, item.qtyKg, 'IN', 'production', productionId, `${item.product.name} produced`);
-      }
-      return productionId;
-    });
-
-    const id = tx();
-    res.status(201).json({ id });
-  } catch (e) {
-    res.status(400).json({ error: e.message });
+  if (!items.length && wheatConsumed === 0) {
+    throw new Error('Enter today\'s physical stock for at least one product or wheat used.');
   }
+
+  const id = db.transaction(() => {
+    let pid = productionId;
+
+    if (pid) {
+      db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(pid);
+      db.prepare('DELETE FROM production_items WHERE production_id=?').run(pid);
+      db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?')
+        .run(date,wheatConsumed,`[Daily Stock Count] ${remarks}`.trim(),pid);
+    } else {
+      const existing = db.prepare(
+        "SELECT id FROM production WHERE date=? AND remarks LIKE '[Daily Stock Count]%' ORDER BY id DESC LIMIT 1"
+      ).get(date);
+
+      if (existing) {
+        pid = existing.id;
+        db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(pid);
+        db.prepare('DELETE FROM production_items WHERE production_id=?').run(pid);
+        db.prepare('UPDATE production SET wheat_consumed=?,remarks=? WHERE id=?')
+          .run(wheatConsumed,`[Daily Stock Count] ${remarks}`.trim(),pid);
+      } else {
+        const r = db.prepare(
+          'INSERT INTO production (date,wheat_consumed,flour_produced,suji_produced,remarks) VALUES (?,?,0,0,?)'
+        ).run(date,wheatConsumed,`[Daily Stock Count] ${remarks}`.trim());
+        pid = r.lastInsertRowid;
+      }
+    }
+
+    const addItem = db.prepare(
+      'INSERT INTO production_items (production_id,product_id,bags_20,bags_40,loose_kg,qty_kg) VALUES (?,?,?,?,?,?)'
+    );
+    const addMovement = db.prepare(`
+      INSERT INTO stock_movements
+      (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+      VALUES (?,?,?,?,?,?,?)
+    `);
+
+    if (wheatConsumed) {
+      addMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',pid,'Wheat used / ground');
+    }
+
+    for (const item of items) {
+      let count = db.prepare(
+        'SELECT id FROM physical_stock_counts WHERE date=? AND product_id=?'
+      ).get(date,item.productId);
+
+      if (count) {
+        db.prepare("DELETE FROM stock_movements WHERE reference_type='physical_adjustment' AND reference_id=?").run(count.id);
+        db.prepare(
+          'UPDATE physical_stock_counts SET bags_20=?,bags_40=?,loose_kg=?,total_kg=?,note=? WHERE id=?'
+        ).run(item.bags20,item.bags40,item.looseKg,item.totalKg,'Daily production stock count',count.id);
+      } else {
+        const countResult = db.prepare(
+          'INSERT INTO physical_stock_counts (date,product_id,bags_20,bags_40,loose_kg,total_kg,note) VALUES (?,?,?,?,?,?,?)'
+        ).run(date,item.productId,item.bags20,item.bags40,item.looseKg,item.totalKg,'Daily production stock count');
+        count = { id: countResult.lastInsertRowid };
+      }
+
+      if (item.productionKg > 0) {
+        addItem.run(
+          pid,item.productId,item.productionBags20,item.productionBags40,item.productionLooseKg,item.productionKg
+        );
+        addMovement.run(
+          date,item.productId,item.productionKg,'IN','production',pid,
+          `${item.product.name} calculated from physical stock`
+        );
+      }
+
+      // Physical stock is the mill's final truth for the day. Any negative net
+      // difference is kept as an internal reconciliation, not shown as production.
+      const ledgerAfterProduction = round2(db.prepare(
+        'SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<=?'
+      ).get(item.productId,date).total);
+      const adjustment = round2(item.totalKg - ledgerAfterProduction);
+      if (Math.abs(adjustment) > 0.001) {
+        addMovement.run(
+          date,item.productId,adjustment,adjustment>=0?'IN':'OUT','physical_adjustment',count.id,
+          'Daily physical stock reconciliation'
+        );
+      }
+    }
+
+    return pid;
+  })();
+
+  const wheatBefore = currentProductStock(wheat.id) + wheatConsumed;
+  const warning = wheatConsumed > wheatBefore + 0.001
+    ? `Recorded wheat stock is ${round2(wheatBefore)} KG, but ${wheatConsumed} KG was used. Production was saved because physical wheat may exist without a purchase entry.`
+    : '';
+
+  return { id, warning, items };
+};
+
+app.post('/api/production', (req,res)=>{
+  try{
+    const date = req.body.date || today();
+    const wheatConsumed = round2(asNumber(req.body.wheat_consumed ?? 0,'Wheat consumed'));
+    const remarks = String(req.body.remarks ?? '').trim();
+    const result = productionFromPhysicalStock({
+      date,
+      wheatConsumed,
+      rawItems:req.body.items,
+      remarks,
+    });
+    res.status(201).json(result);
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.post('/api/production/:id/update', (req,res)=>{
   try{
-    const id=asNumber(req.params.id,'Production',{min:1,allowZero:false});
-    const existing=db.prepare('SELECT * FROM production WHERE id=?').get(id);
+    const id = asNumber(req.params.id,'Production',{min:1,allowZero:false});
+    const existing = db.prepare('SELECT * FROM production WHERE id=?').get(id);
     if(!existing) return res.status(404).json({error:'Production record not found'});
-    const date=req.body.date||existing.date;
-    const wheatConsumed=asNumber(req.body.wheat_consumed??0,'Wheat consumed');
-    const rawItems=Array.isArray(req.body.items)?req.body.items:[];
-    const normalizedItems=rawItems.map((item,index)=>{
-      const productId=asNumber(item.product_id,`Product ${index+1}`,{min:1,allowZero:false});
-      const qtyKg=asNumber(item.qty_kg??0,`Product ${index+1} KG`);
-      if(qtyKg===0) return null;
-      const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-      if(!product||['Wheat','Bardana'].includes(product.name)) throw new Error(`Product ${index+1} is invalid`);
-      return {product,productId,qtyKg:round2(qtyKg)};
-    }).filter(Boolean);
-    if(wheatConsumed===0&&!normalizedItems.length) throw new Error('Enter wheat consumed or at least one produced product');
-    const remarks=String(req.body.remarks??'').trim();
-    const wheat=getProduct('Wheat');
 
-    db.transaction(()=>{
-      db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(id);
-      if(wheatConsumed>currentProductStock(wheat.id)+0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
-      for(const item of normalizedItems){
-        if(currentProductStock(item.productId)+item.qtyKg < -0.001) throw new Error(`Cannot reduce ${item.product.name} production below quantity already sold or consumed later.`);
-      }
-      const oldProductIds=db.prepare('SELECT product_id FROM production_items WHERE production_id=?').all(id).map(r=>r.product_id);
-      for(const productId of oldProductIds){
-        if(!normalizedItems.some(i=>i.productId===productId) && currentProductStock(productId) < -0.001){
-          const p=db.prepare('SELECT name FROM products WHERE id=?').get(productId);
-          throw new Error(`Cannot remove ${p.name} production because later records already use it.`);
-        }
-      }
-      db.prepare('DELETE FROM production_items WHERE production_id=?').run(id);
-      db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?').run(date,wheatConsumed,remarks,id);
-      const insertItem=db.prepare('INSERT INTO production_items (production_id,product_id,qty_kg) VALUES (?,?,?)');
-      const insertMovement=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
-      if(wheatConsumed) insertMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',id,'Wheat used / ground');
-      for(const item of normalizedItems){
-        insertItem.run(id,item.productId,item.qtyKg);
-        insertMovement.run(date,item.productId,item.qtyKg,'IN','production',id,`${item.product.name} produced`);
-      }
-    })();
-    res.json({id});
+    const date = req.body.date || existing.date;
+    const wheatConsumed = round2(asNumber(req.body.wheat_consumed ?? 0,'Wheat consumed'));
+    const remarks = String(req.body.remarks ?? '').trim();
+
+    const result = productionFromPhysicalStock({
+      productionId:id,
+      date,
+      wheatConsumed,
+      rawItems:req.body.items,
+      remarks,
+    });
+    res.json(result);
   }catch(e){res.status(400).json({error:e.message})}
 });
 
@@ -971,56 +1241,41 @@ app.post('/api/sales/:id/update', (req,res)=>{
   }
 });
 
-app.get('/api/consumption', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
+app.get('/api/consumption', (req,res)=>{
+  const limit=Math.min(Number(req.query.limit)||100,500);
   res.json(db.prepare(`
-    SELECT pc.*, p.name AS product_name
+    SELECT pc.*,p.name AS product_name
     FROM product_consumption pc
     JOIN products p ON p.id=pc.product_id
-    ORDER BY pc.date DESC, pc.id DESC
+    ORDER BY pc.date DESC,pc.id DESC
     LIMIT ?
   `).all(limit));
 });
 
-app.post('/api/consumption', (req, res) => {
-  try {
-    const date = req.body.date || today();
-    const productId = asNumber(req.body.product_id, 'Product', { min: 1, allowZero: false });
-    const product = db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-    if (!product || product.name === 'Wheat') throw new Error('Select a valid finished product');
+app.post('/api/consumption', (req,res)=>{
+  try{
+    const date=req.body.date||today();
+    const productId=asNumber(req.body.product_id,'Product',{min:1,allowZero:false});
+    const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
+    if(!product) throw new Error('Select a valid finished product');
+    const qty=normalizeBagKg(req.body,'Consumption');
+    if(qty.totalKg<=0) throw new Error('Enter consumption in 20 KG bags, 40 KG bags or loose KG');
+    const reason=requiredText(req.body.reason,'Reason');
+    if(!['Home','Company / Mill Use','Donation','Other'].includes(reason)) throw new Error('Select a valid consumption reason');
+    const stock=currentProductStock(productId);
+    if(qty.totalKg>stock+0.001) throw new Error(`${product.name} consumption (${qty.totalKg} KG) exceeds current stock (${stock} KG)`);
+    const remarks=String(req.body.remarks??'').trim();
 
-    const qtyKg = round2(asNumber(req.body.qty_kg, 'Quantity KG', { min: 0, allowZero: false }));
-    const reason = requiredText(req.body.reason, 'Reason');
-    if (!['Home', 'Company / Mill Use', 'Donation', 'Other'].includes(reason)) throw new Error('Select a valid consumption reason');
+    const id=db.transaction(()=>{
+      const r=db.prepare('INSERT INTO product_consumption (date,product_id,bags_20,bags_40,loose_kg,qty_kg,reason,remarks) VALUES (?,?,?,?,?,?,?,?)')
+        .run(date,productId,qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,reason,remarks);
+      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)`).run(date,productId,-qty.totalKg,'OUT','consumption',r.lastInsertRowid,`${reason}: ${remarks||'Non-sale consumption'}`);
+      return r.lastInsertRowid;
+    })();
 
-    const stock = currentProductStock(productId);
-    if (qtyKg > stock + 0.001) throw new Error(`${product.name} consumption (${qtyKg} KG) exceeds current stock (${stock} KG)`);
-
-    const remarks = String(req.body.remarks ?? '').trim();
-
-    const tx = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO product_consumption (date,product_id,qty_kg,reason,remarks)
-        VALUES (?,?,?,?,?)
-      `).run(date, productId, qtyKg, reason, remarks);
-
-      db.prepare(`
-        INSERT INTO stock_movements
-          (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
-        VALUES (?,?,?,?,?,?,?)
-      `).run(date, productId, -qtyKg, 'OUT', 'consumption', result.lastInsertRowid, `${reason}: ${remarks || 'Non-sale consumption'}`);
-
-      return result.lastInsertRowid;
-    });
-
-    const id = tx();
-    res.status(201).json({
-      id,
-      current_stock_kg: currentProductStock(productId),
-    });
-  } catch (e) {
-    res.status(400).json({ error: e.message });
-  }
+    res.status(201).json({id,current_stock_kg:currentProductStock(productId)});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.post('/api/consumption/:id/update', (req,res)=>{
@@ -1030,21 +1285,107 @@ app.post('/api/consumption/:id/update', (req,res)=>{
     if(!existing) return res.status(404).json({error:'Consumption record not found'});
     const date=req.body.date||existing.date;
     const productId=asNumber(req.body.product_id,'Product',{min:1,allowZero:false});
-    const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-    if(!product||['Wheat','Bardana'].includes(product.name)) throw new Error('Select a valid finished product');
-    const qtyKg=round2(asNumber(req.body.qty_kg,'Quantity KG',{min:0,allowZero:false}));
+    const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
+    if(!product) throw new Error('Select a valid finished product');
+    const qty=normalizeBagKg(req.body,'Consumption');
+    if(qty.totalKg<=0) throw new Error('Enter consumption in 20 KG bags, 40 KG bags or loose KG');
     const reason=requiredText(req.body.reason,'Reason');
-    if(!['Home','Company / Mill Use','Donation','Other'].includes(reason)) throw new Error('Select a valid consumption reason');
     const remarks=String(req.body.remarks??'').trim();
+
     db.transaction(()=>{
       db.prepare("DELETE FROM stock_movements WHERE reference_type='consumption' AND reference_id=?").run(id);
       const stock=currentProductStock(productId);
-      if(qtyKg>stock+0.001) throw new Error(`${product.name} consumption exceeds current stock`);
-      db.prepare('UPDATE product_consumption SET date=?,product_id=?,qty_kg=?,reason=?,remarks=? WHERE id=?').run(date,productId,qtyKg,reason,remarks,id);
-      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`)
-        .run(date,productId,-qtyKg,'OUT','consumption',id,`${reason}: ${remarks||'Non-sale consumption'}`);
+      if(qty.totalKg>stock+0.001) throw new Error(`${product.name} consumption exceeds current stock`);
+      db.prepare('UPDATE product_consumption SET date=?,product_id=?,bags_20=?,bags_40=?,loose_kg=?,qty_kg=?,reason=?,remarks=? WHERE id=?')
+        .run(date,productId,qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,reason,remarks,id);
+      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)`).run(date,productId,-qty.totalKg,'OUT','consumption',id,`${reason}: ${remarks||'Non-sale consumption'}`);
     })();
+
     res.json({id,current_stock_kg:currentProductStock(productId)});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.get('/api/employees', (_req,res)=>{
+  const rows=db.prepare(`
+    SELECT e.*,
+      ROUND(COALESCE((SELECT SUM(amount) FROM employee_salary_due s WHERE s.employee_id=e.id),0),2) AS total_salary,
+      ROUND(COALESCE((SELECT SUM(amount) FROM employee_payments p WHERE p.employee_id=e.id),0),2) AS total_paid
+    FROM employees e ORDER BY e.name COLLATE NOCASE
+  `).all().map(row=>({...row,balance:employeeBalance(row.id)}));
+  res.json(rows);
+});
+
+app.post('/api/employees', (req,res)=>{
+  try{
+    const name=requiredText(req.body.name,'Employee name');
+    const monthlySalary=round2(asNumber(req.body.monthly_salary??0,'Monthly salary'));
+    const r=db.prepare('INSERT INTO employees (name,phone,address,monthly_salary) VALUES (?,?,?,?)')
+      .run(name,String(req.body.phone??'').trim(),String(req.body.address??'').trim(),monthlySalary);
+    res.status(201).json(db.prepare('SELECT * FROM employees WHERE id=?').get(r.lastInsertRowid));
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.post('/api/employees/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Employee',{min:1,allowZero:false});
+    if(!db.prepare('SELECT id FROM employees WHERE id=?').get(id)) return res.status(404).json({error:'Employee not found'});
+    const name=requiredText(req.body.name,'Employee name');
+    const monthlySalary=round2(asNumber(req.body.monthly_salary??0,'Monthly salary'));
+    db.prepare('UPDATE employees SET name=?,phone=?,address=?,monthly_salary=? WHERE id=?')
+      .run(name,String(req.body.phone??'').trim(),String(req.body.address??'').trim(),monthlySalary,id);
+    res.json(db.prepare('SELECT * FROM employees WHERE id=?').get(id));
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.get('/api/employees/:id', (req,res)=>{
+  const id=Number(req.params.id);
+  const employee=db.prepare('SELECT * FROM employees WHERE id=?').get(id);
+  if(!employee) return res.status(404).json({error:'Employee not found'});
+  const events=db.prepare(`
+    SELECT 'salary' AS type,id,date,created_at,'Salary Due' AS reference,amount AS debit,0 AS credit,note
+    FROM employee_salary_due WHERE employee_id=?
+    UNION ALL
+    SELECT 'payment' AS type,id,date,created_at,'Payment' AS reference,0 AS debit,amount AS credit,note
+    FROM employee_payments WHERE employee_id=?
+    ORDER BY date ASC,created_at ASC,type ASC,id ASC
+  `).all(id,id);
+  if(Number(employee.opening_balance||0)!==0){
+    const opening=Number(employee.opening_balance);
+    events.unshift({type:'opening',id:0,date:employee.opening_date||'',created_at:'',reference:'Opening Balance',debit:opening>0?opening:0,credit:opening<0?Math.abs(opening):0,note:'Opening balance'});
+  }
+  let running=0;
+  const ledger=events.map(e=>{
+    running+=Number(e.debit||0)-Number(e.credit||0);
+    return {...e,balance:round2(running)};
+  }).reverse();
+  const salary=db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_salary_due WHERE employee_id=?').get(id).total;
+  const paid=db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_payments WHERE employee_id=?').get(id).total;
+  res.json({...employee,total_salary:round2(salary),total_paid:round2(paid),balance:employeeBalance(id),ledger});
+});
+
+app.post('/api/employee-salary', (req,res)=>{
+  try{
+    const employeeId=asNumber(req.body.employee_id,'Employee',{min:1,allowZero:false});
+    const employee=db.prepare('SELECT * FROM employees WHERE id=?').get(employeeId);
+    if(!employee) throw new Error('Employee not found');
+    const amount=round2(asNumber(req.body.amount??employee.monthly_salary,'Salary amount',{min:0,allowZero:false}));
+    const date=req.body.date||today();
+    const note=String(req.body.note??'').trim();
+    const r=db.prepare('INSERT INTO employee_salary_due (employee_id,date,amount,note) VALUES (?,?,?,?)').run(employeeId,date,amount,note);
+    res.status(201).json({id:r.lastInsertRowid,balance:employeeBalance(employeeId)});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.post('/api/employee-payments', (req,res)=>{
+  try{
+    const employeeId=asNumber(req.body.employee_id,'Employee',{min:1,allowZero:false});
+    if(!db.prepare('SELECT id FROM employees WHERE id=?').get(employeeId)) throw new Error('Employee not found');
+    const amount=round2(asNumber(req.body.amount,'Amount',{min:0,allowZero:false}));
+    const date=req.body.date||today();
+    const note=String(req.body.note??'').trim();
+    const r=db.prepare('INSERT INTO employee_payments (employee_id,date,amount,note) VALUES (?,?,?,?)').run(employeeId,date,amount,note);
+    res.status(201).json({id:r.lastInsertRowid,balance:employeeBalance(employeeId)});
   }catch(e){res.status(400).json({error:e.message})}
 });
 
@@ -1058,19 +1399,142 @@ app.get('/api/stock/current', (_req, res) => {
   res.json(rows);
 });
 
-app.get('/api/stock/daily', (req, res) => {
-  const date = req.query.date || today();
-  const rows = db.prepare(`
-    SELECT p.id,p.name,
-      ROUND(COALESCE(SUM(CASE WHEN sm.date < ? THEN sm.qty_kg ELSE 0 END),0),2) AS opening,
-      ROUND(COALESCE(SUM(CASE WHEN sm.date = ? AND sm.qty_kg > 0 THEN sm.qty_kg ELSE 0 END),0),2) AS in_qty,
-      ROUND(ABS(COALESCE(SUM(CASE WHEN sm.date = ? AND sm.qty_kg < 0 THEN sm.qty_kg ELSE 0 END),0)),2) AS out_qty,
-      ROUND(COALESCE(SUM(CASE WHEN sm.date <= ? THEN sm.qty_kg ELSE 0 END),0),2) AS closing
-    FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    WHERE p.is_active=1 AND p.name<>'Bardana'
-    GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
-  `).all(date, date, date, date);
-  res.json({ date, rows });
+app.get('/api/stock/daily', (req,res)=>{
+  const date=String(req.query.date||today());
+  const products=db.prepare("SELECT id,name FROM products WHERE is_active=1 AND name<>'Bardana' ORDER BY CASE WHEN name='Wheat' THEN 0 ELSE 1 END,name COLLATE NOCASE").all();
+
+  const rows=products.map(product=>{
+    const opening=round2(db.prepare(
+      'SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<?'
+    ).get(product.id,date).total);
+
+    const previousPhysical=db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg
+      FROM physical_stock_counts
+      WHERE product_id=? AND date<?
+      ORDER BY date DESC LIMIT 1
+    `).get(product.id,date);
+    const openingRecord=!previousPhysical?db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg
+      FROM opening_product_stock
+      WHERE product_id=? AND date<?
+      ORDER BY date DESC LIMIT 1
+    `).get(product.id,date):null;
+    const previousKnown=Boolean(previousPhysical||openingRecord);
+    const previous=previousPhysical||openingRecord||{bags_20:0,bags_40:0,loose_kg:0,total_kg:opening};
+
+    const saleBreakdown=db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN ABS(si.bag_size-20)<0.001 THEN si.bags ELSE 0 END),0) AS bags_20,
+        COALESCE(SUM(CASE WHEN ABS(si.bag_size-40)<0.001 THEN si.bags ELSE 0 END),0) AS bags_40,
+        COALESCE(SUM(CASE WHEN ABS(si.bag_size-20)>=0.001 AND ABS(si.bag_size-40)>=0.001 THEN si.total_kg ELSE 0 END),0) AS loose_kg,
+        COALESCE(SUM(si.total_kg),0) AS total_kg
+      FROM sale_items si JOIN sales s ON s.id=si.sale_id
+      WHERE si.product_id=? AND s.date=?
+    `).get(product.id,date);
+
+    const consumptionBreakdown=db.prepare(`
+      SELECT
+        COALESCE(SUM(bags_20),0) AS bags_20,
+        COALESCE(SUM(bags_40),0) AS bags_40,
+        COALESCE(SUM(loose_kg),0) AS loose_kg,
+        COALESCE(SUM(qty_kg),0) AS total_kg
+      FROM product_consumption
+      WHERE product_id=? AND date=?
+    `).get(product.id,date);
+
+    const physical=db.prepare(
+      'SELECT bags_20,bags_40,loose_kg,total_kg FROM physical_stock_counts WHERE product_id=? AND date=?'
+    ).get(product.id,date);
+
+    const production=db.prepare(`
+      SELECT
+        COALESCE(SUM(pi.bags_20),0) AS bags_20,
+        COALESCE(SUM(pi.bags_40),0) AS bags_40,
+        COALESCE(SUM(pi.loose_kg),0) AS loose_kg,
+        COALESCE(SUM(pi.qty_kg),0) AS total_kg
+      FROM production_items pi JOIN production pr ON pr.id=pi.production_id
+      WHERE pi.product_id=? AND pr.date=?
+    `).get(product.id,date);
+
+    const productionKg=round2(Number(production.total_kg||0));
+    const totalAvailable=round2(opening+productionKg);
+    const ledgerClosing=round2(db.prepare(
+      'SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<=?'
+    ).get(product.id,date).total);
+
+    return {
+      id:product.id,
+      name:product.name,
+      opening,
+      previous_bags_20:round2(previous.bags_20||0),
+      previous_bags_40:round2(previous.bags_40||0),
+      previous_loose_kg:round2(previous.loose_kg||0),
+      previous_breakdown_known:previousKnown,
+
+      production:productionKg,
+      production_bags_20:round2(production.bags_20||0),
+      production_bags_40:round2(production.bags_40||0),
+      production_loose_kg:round2(production.loose_kg||0),
+      production_breakdown_known: productionKg===0 || Math.abs(
+        (Number(production.bags_20||0)*20)+(Number(production.bags_40||0)*40)+Number(production.loose_kg||0)-productionKg
+      )<=0.01,
+
+      total_available:totalAvailable,
+      total_bags_20:round2(Number(previous.bags_20||0)+Number(production.bags_20||0)),
+      total_bags_40:round2(Number(previous.bags_40||0)+Number(production.bags_40||0)),
+      total_loose_kg:round2(Number(previous.loose_kg||0)+Number(production.loose_kg||0)),
+
+      sales:round2(saleBreakdown.total_kg||0),
+      sales_bags_20:round2(saleBreakdown.bags_20||0),
+      sales_bags_40:round2(saleBreakdown.bags_40||0),
+      sales_loose_kg:round2(saleBreakdown.loose_kg||0),
+
+      consumption:round2(consumptionBreakdown.total_kg||0),
+      consumption_bags_20:round2(consumptionBreakdown.bags_20||0),
+      consumption_bags_40:round2(consumptionBreakdown.bags_40||0),
+      consumption_loose_kg:round2(consumptionBreakdown.loose_kg||0),
+
+      closing:physical?round2(physical.total_kg):ledgerClosing,
+      physical_counted:!!physical,
+      bag_breakdown_known:!!physical,
+      bags_20:round2(physical?.bags_20||0),
+      bags_40:round2(physical?.bags_40||0),
+      loose_kg:round2(physical?.loose_kg||0),
+    };
+  });
+
+  res.json({date,rows});
+});
+
+app.post('/api/stock/physical-count', (req,res)=>{
+  try{
+    const date=req.body.date||today();
+    const productId=asNumber(req.body.product_id,'Product',{min:1,allowZero:false});
+    const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name<>'Bardana'").get(productId);
+    if(!product) throw new Error('Select a valid product');
+    const qty=normalizeBagKg(req.body,'Physical stock');
+    const id=db.transaction(()=>{
+      let count=db.prepare('SELECT * FROM physical_stock_counts WHERE date=? AND product_id=?').get(date,productId);
+      if(count){
+        db.prepare("DELETE FROM stock_movements WHERE reference_type='physical_adjustment' AND reference_id=?").run(count.id);
+        db.prepare('UPDATE physical_stock_counts SET bags_20=?,bags_40=?,loose_kg=?,total_kg=?,note=? WHERE id=?')
+          .run(qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,String(req.body.note??'').trim(),count.id);
+      }else{
+        const r=db.prepare('INSERT INTO physical_stock_counts (date,product_id,bags_20,bags_40,loose_kg,total_kg,note) VALUES (?,?,?,?,?,?,?)')
+          .run(date,productId,qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,String(req.body.note??'').trim());
+        count={id:r.lastInsertRowid};
+      }
+      const ledger=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<=?').get(productId,date).total);
+      const difference=round2(qty.totalKg-ledger);
+      if(Math.abs(difference)>0.001){
+        db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?,?)`).run(date,productId,difference,difference>=0?'IN':'OUT','physical_adjustment',count.id,'Physical closing stock adjustment');
+      }
+      return count.id;
+    })();
+    res.json({id,product_id:productId,...qty});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.get('/api/stock/monthly', (req, res) => {
@@ -1094,6 +1558,20 @@ app.get('/api/stock/monthly', (req, res) => {
 
 
 
+
+app.get('/api/stock/overall', (_req,res)=>{
+  const rows=db.prepare(`
+    SELECT p.id,p.name,
+      ROUND(COALESCE(SUM(CASE WHEN sm.qty_kg>0 THEN sm.qty_kg ELSE 0 END),0),2) AS total_in,
+      ROUND(ABS(COALESCE(SUM(CASE WHEN sm.qty_kg<0 THEN sm.qty_kg ELSE 0 END),0)),2) AS total_out,
+      ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS current
+    FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
+    WHERE p.is_active=1 AND p.name<>'Bardana'
+    GROUP BY p.id,p.name
+    ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END,p.name COLLATE NOCASE
+  `).all();
+  res.json({rows});
+});
 
 app.get('/api/expenses', (req, res) => {
   const month = String(req.query.month || today().slice(0, 7));
@@ -1124,6 +1602,14 @@ app.get('/api/expenses', (req, res) => {
     ORDER BY b.date DESC,b.id DESC
   `).all(start, end).map((row) => ({ ...row, type: 'Bardana Purchase' }));
 
+  const employeeRows = db.prepare(`
+    SELECT ep.id,ep.date,e.name AS source,ep.amount,ep.note
+    FROM employee_payments ep
+    JOIN employees e ON e.id=ep.employee_id
+    WHERE ep.date>=? AND ep.date<=?
+    ORDER BY ep.date DESC,ep.id DESC
+  `).all(start,end).map(row=>({...row,type:'Employee Salary'}));
+
   const manual = db.prepare(`
     SELECT id,date,category,amount,note
     FROM other_expenses
@@ -1133,6 +1619,7 @@ app.get('/api/expenses', (req, res) => {
 
   const wheatTotal = round2(wheatRows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
   const bardanaTotal = round2([...wheatBardanaRows, ...bardanaRows].reduce((sum, row) => sum + Number(row.amount || 0), 0));
+  const salaryTotal = round2(employeeRows.reduce((sum,row)=>sum+Number(row.amount||0),0));
   const otherTotal = round2(manual.reduce((sum, row) => sum + Number(row.amount || 0), 0));
 
   res.json({
@@ -1140,10 +1627,11 @@ app.get('/api/expenses', (req, res) => {
     summary: {
       wheat: wheatTotal,
       bardana: bardanaTotal,
+      salary: salaryTotal,
       other: otherTotal,
-      total: round2(wheatTotal + bardanaTotal + otherTotal),
+      total: round2(wheatTotal + bardanaTotal + salaryTotal + otherTotal),
     },
-    automatic: [...wheatRows, ...wheatBardanaRows, ...bardanaRows].sort((a, b) => b.date.localeCompare(a.date)),
+    automatic: [...wheatRows, ...wheatBardanaRows, ...bardanaRows, ...employeeRows].sort((a, b) => b.date.localeCompare(a.date)),
     manual,
   });
 });
@@ -1195,26 +1683,55 @@ app.get('/api/appendix/daily', (req, res) => {
     WHERE product_id=? AND date<=?
   `).get(wheat.id, date).total) : 0;
 
-  const rows = db.prepare(`
-    SELECT p.id, p.name,
-      ROUND(COALESCE((
-        SELECT SUM(pi.qty_kg)
-        FROM production_items pi
-        JOIN production pr ON pr.id=pi.production_id
-        WHERE pr.date=? AND pi.product_id=p.id
-      ),0),2) AS produced_kg,
-      ROUND(COALESCE((
-        SELECT SUM(sm.qty_kg)
-        FROM stock_movements sm
-        WHERE sm.product_id=p.id AND sm.date<=?
-      ),0),2) AS closing_kg
-    FROM products p
-    WHERE p.is_active=1 AND p.name<>'Bardana' AND p.name<>'Wheat'
-    ORDER BY p.name COLLATE NOCASE
-  `).all(date, date).map((row) => ({
-    ...row,
-    percentage: wheatUsed > 0 ? round2((Number(row.produced_kg) / wheatUsed) * 100) : 0,
-  }));
+  const products = db.prepare(`
+    SELECT id,name FROM products
+    WHERE is_active=1 AND name<>'Bardana' AND name<>'Wheat'
+    ORDER BY name COLLATE NOCASE
+  `).all();
+
+  const rows = products.map((product) => {
+    const produced = db.prepare(`
+      SELECT
+        COALESCE(SUM(pi.bags_20),0) AS bags_20,
+        COALESCE(SUM(pi.bags_40),0) AS bags_40,
+        COALESCE(SUM(pi.loose_kg),0) AS loose_kg,
+        COALESCE(SUM(pi.qty_kg),0) AS total_kg
+      FROM production_items pi
+      JOIN production pr ON pr.id=pi.production_id
+      WHERE pr.date=? AND pi.product_id=?
+    `).get(date,product.id);
+
+    const closingKg = round2(db.prepare(`
+      SELECT COALESCE(SUM(qty_kg),0) AS total
+      FROM stock_movements
+      WHERE product_id=? AND date<=?
+    `).get(product.id,date).total);
+
+    const closing = db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg
+      FROM physical_stock_counts
+      WHERE product_id=? AND date<=?
+      ORDER BY date DESC,id DESC LIMIT 1
+    `).get(product.id,date);
+
+    return {
+      id:product.id,
+      name:product.name,
+      produced_kg:round2(produced.total_kg||0),
+      produced_bags_20:round2(produced.bags_20||0),
+      produced_bags_40:round2(produced.bags_40||0),
+      produced_loose_kg:round2(produced.loose_kg||0),
+      produced_breakdown_known:Number(produced.total_kg||0)===0 || Math.abs(
+        (Number(produced.bags_20||0)*20)+(Number(produced.bags_40||0)*40)+Number(produced.loose_kg||0)-Number(produced.total_kg||0)
+      )<=0.01,
+      closing_kg:closingKg,
+      closing_bags_20:round2(closing?.bags_20||0),
+      closing_bags_40:round2(closing?.bags_40||0),
+      closing_loose_kg:round2(closing?.loose_kg||0),
+      closing_breakdown_known:Boolean(closing),
+      percentage:wheatUsed>0?round2((Number(produced.total_kg||0)/wheatUsed)*100):0,
+    };
+  });
 
   const totalProduced = round2(rows.reduce((sum, row) => sum + Number(row.produced_kg || 0), 0));
 
@@ -1264,5 +1781,11 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Mill Management v1.0 running at http://localhost:${PORT}`);
+  if (LICENSE_BYPASS) {
+    console.log(`Mill Management DEV API running at http://localhost:${PORT}`);
+    console.log('License check: BYPASSED for development only');
+  } else {
+    console.log(`Mill Management v1.0 running at http://localhost:${PORT}`);
+    console.log('License check: ENABLED');
+  }
 });
