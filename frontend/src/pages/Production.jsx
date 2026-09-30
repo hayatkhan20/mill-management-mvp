@@ -124,14 +124,13 @@ export default function Production(){
                   return <tr key={product.id}>
                     <td><strong>{product.name}</strong></td>
                     <td>
-                      <strong>{num(d?.opening||0)} KG</strong>
-                      <small>{num(d?.previous_bags_20||0)}×20KG + {num(d?.previous_bags_40||0)}×40KG + {num(d?.previous_loose_kg||0)} loose</small>
+                      {d?.previous_breakdown_known?<><strong className="record-bags">{num(d?.previous_bags_20||0)}×20KG + {num(d?.previous_bags_40||0)}×40KG</strong><small className="record-kg">{num(d?.opening||0)} KG{Number(d?.previous_loose_kg||0)>0?` • ${num(d.previous_loose_kg)} loose KG`:''}</small></>:<><strong>{num(d?.opening||0)} KG</strong><small>Bag breakdown not recorded</small></>}
                     </td>
                     <td><input type="number" min="0" step="1" value={item.bags_20} onChange={e=>update(product.id,'bags_20',e.target.value)}/></td>
                     <td><input type="number" min="0" step="1" value={item.bags_40} onChange={e=>update(product.id,'bags_40',e.target.value)}/></td>
                     <td><input type="number" min="0" step="0.01" value={item.loose_kg} onChange={e=>update(product.id,'loose_kg',e.target.value)}/></td>
-                    <td><strong>{num(totalKg(item))} KG</strong></td>
-                    <td>{produced===null?'—':<><strong>{num(produced.total)} KG</strong><small>{num(produced.bags20)}×20KG + {num(produced.bags40)}×40KG + {num(produced.loose)} loose</small></>}</td>
+                    <td><strong className="record-bags">{num(item.bags_20||0)}×20KG + {num(item.bags_40||0)}×40KG</strong><small className="record-kg">{num(totalKg(item))} KG{Number(item.loose_kg||0)>0?` • ${num(item.loose_kg)} loose KG`:''}</small></td>
+                    <td>{produced===null?'—':<><strong className="record-bags">{num(produced.bags20)}×20KG + {num(produced.bags40)}×40KG</strong><small className="record-kg">{num(produced.total)} KG{Number(produced.loose)>0?` • ${num(produced.loose)} loose KG`:''}</small></>}</td>
                   </tr>;
                 })}
               </tbody>
@@ -157,8 +156,8 @@ export default function Production(){
           {rows.slice(0,20).map(r=><tr key={r.id}>
             <td>{formatDateDMY(r.date)}</td>
             <td>{num(r.wheat_consumed)} KG</td>
-            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong>{num(i.qty_kg)} KG</strong></div>):'—'}</td>
-            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong>{num(i.physical_stock_kg)} KG</strong> <small>{num(i.stock_bags_20)}×20KG + {num(i.stock_bags_40)}×40KG + {num(i.stock_loose_kg)} loose</small></div>):'—'}</td>
+            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong className="record-bags">{num(i.bags_20||0)}×20KG + {num(i.bags_40||0)}×40KG</strong><small className="record-kg">{num(i.qty_kg)} KG{Number(i.loose_kg||0)>0?` • ${num(i.loose_kg)} loose KG`:''}</small></div>):'—'}</td>
+            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <strong className="record-bags">{num(i.stock_bags_20)}×20KG + {num(i.stock_bags_40)}×40KG</strong><small className="record-kg">{num(i.physical_stock_kg)} KG{Number(i.stock_loose_kg)>0?` • ${num(i.stock_loose_kg)} loose KG`:''}</small></div>):'—'}</td>
           </tr>)}
         </tbody>
       </table></div>:<Empty/>}
