@@ -779,80 +779,174 @@ app.get('/api/production', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
   const rows = db.prepare('SELECT id,date,wheat_consumed,remarks,created_at FROM production ORDER BY date DESC,id DESC LIMIT ?').all(limit);
   const getItems = db.prepare(`
-    SELECT pi.id,pi.product_id,p.name AS product_name,pi.bags_20,pi.bags_40,pi.loose_kg,pi.qty_kg
-    FROM production_items pi JOIN products p ON p.id=pi.product_id
-    WHERE pi.production_id=? ORDER BY p.name COLLATE NOCASE
+    SELECT pi.id,pi.product_id,p.name AS product_name,pi.qty_kg,
+      COALESCE(pc.bags_20,0) AS stock_bags_20,
+      COALESCE(pc.bags_40,0) AS stock_bags_40,
+      COALESCE(pc.loose_kg,0) AS stock_loose_kg,
+      COALESCE(pc.total_kg,0) AS physical_stock_kg
+    FROM production_items pi
+    JOIN products p ON p.id=pi.product_id
+    JOIN production pr ON pr.id=pi.production_id
+    LEFT JOIN physical_stock_counts pc ON pc.product_id=pi.product_id AND pc.date=pr.date
+    WHERE pi.production_id=?
+    ORDER BY p.name COLLATE NOCASE
   `);
-  res.json(rows.map(row => ({ ...row, items: getItems.all(row.id) })));
+  res.json(rows.map(row => ({
+    ...row,
+    remarks: String(row.remarks || '').replace(/^\[Daily Stock Count\]\s*/, ''),
+    items: getItems.all(row.id),
+  })));
 });
 
-const normalizeProductionItems = (rawItems) => (Array.isArray(rawItems) ? rawItems : []).map((item,index)=>{
-  const productId=asNumber(item.product_id,`Product ${index+1}`,{min:1,allowZero:false});
-  const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
-  if(!product) throw new Error(`Product ${index+1} is invalid`);
-  const qty=normalizeBagKg(item,`Product ${index+1}`);
-  if(qty.totalKg===0) return null;
-  return {product,productId,...qty};
-}).filter(Boolean);
+const productionFromPhysicalStock = ({ productionId = null, date, wheatConsumed, rawItems, remarks }) => {
+  const wheat = getProduct('Wheat');
+  const items = (Array.isArray(rawItems) ? rawItems : []).map((item,index) => {
+    const productId = asNumber(item.product_id, `Product ${index+1}`, { min:1, allowZero:false });
+    const product = db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
+    if (!product) throw new Error(`Product ${index+1} is invalid`);
+
+    const hasCount = [item.bags_20,item.bags_40,item.loose_kg].some(v => String(v ?? '').trim() !== '');
+    if (!hasCount) return null;
+
+    const qty = normalizeBagKg(item, `${product.name} stock`);
+    const opening = round2(db.prepare(
+      'SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<?'
+    ).get(productId,date).total);
+    const sales = round2(Math.abs(db.prepare(
+      "SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date=? AND reference_type='sale'"
+    ).get(productId,date).total));
+    const consumption = round2(db.prepare(
+      'SELECT COALESCE(SUM(qty_kg),0) AS total FROM product_consumption WHERE product_id=? AND date=?'
+    ).get(productId,date).total);
+
+    const productionKg = round2(qty.totalKg + sales + consumption - opening);
+    if (productionKg < -0.001) {
+      throw new Error(`${product.name}: physical stock is lower than expected. Check yesterday stock, sales or consumption.`);
+    }
+
+    return {
+      productId,
+      product,
+      ...qty,
+      opening,
+      sales,
+      consumption,
+      productionKg: Math.max(0, productionKg),
+    };
+  }).filter(Boolean);
+
+  if (!items.length && wheatConsumed === 0) {
+    throw new Error('Enter today\'s physical stock for at least one product or wheat used.');
+  }
+
+  const id = db.transaction(() => {
+    let pid = productionId;
+
+    if (pid) {
+      db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(pid);
+      db.prepare('DELETE FROM production_items WHERE production_id=?').run(pid);
+      db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?')
+        .run(date,wheatConsumed,`[Daily Stock Count] ${remarks}`.trim(),pid);
+    } else {
+      const existing = db.prepare(
+        "SELECT id FROM production WHERE date=? AND remarks LIKE '[Daily Stock Count]%' ORDER BY id DESC LIMIT 1"
+      ).get(date);
+
+      if (existing) {
+        pid = existing.id;
+        db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(pid);
+        db.prepare('DELETE FROM production_items WHERE production_id=?').run(pid);
+        db.prepare('UPDATE production SET wheat_consumed=?,remarks=? WHERE id=?')
+          .run(wheatConsumed,`[Daily Stock Count] ${remarks}`.trim(),pid);
+      } else {
+        const r = db.prepare(
+          'INSERT INTO production (date,wheat_consumed,flour_produced,suji_produced,remarks) VALUES (?,?,0,0,?)'
+        ).run(date,wheatConsumed,`[Daily Stock Count] ${remarks}`.trim());
+        pid = r.lastInsertRowid;
+      }
+    }
+
+    const addItem = db.prepare(
+      'INSERT INTO production_items (production_id,product_id,bags_20,bags_40,loose_kg,qty_kg) VALUES (?,?,?,?,?,?)'
+    );
+    const addMovement = db.prepare(`
+      INSERT INTO stock_movements
+      (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+      VALUES (?,?,?,?,?,?,?)
+    `);
+
+    if (wheatConsumed) {
+      addMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',pid,'Wheat used / ground');
+    }
+
+    for (const item of items) {
+      let count = db.prepare(
+        'SELECT id FROM physical_stock_counts WHERE date=? AND product_id=?'
+      ).get(date,item.productId);
+
+      if (count) {
+        db.prepare(
+          'UPDATE physical_stock_counts SET bags_20=?,bags_40=?,loose_kg=?,total_kg=?,note=? WHERE id=?'
+        ).run(item.bags20,item.bags40,item.looseKg,item.totalKg,'Daily production stock count',count.id);
+      } else {
+        db.prepare(
+          'INSERT INTO physical_stock_counts (date,product_id,bags_20,bags_40,loose_kg,total_kg,note) VALUES (?,?,?,?,?,?,?)'
+        ).run(date,item.productId,item.bags20,item.bags40,item.looseKg,item.totalKg,'Daily production stock count');
+      }
+
+      if (item.productionKg > 0) {
+        addItem.run(pid,item.productId,0,0,item.productionKg,item.productionKg);
+        addMovement.run(
+          date,item.productId,item.productionKg,'IN','production',pid,
+          `${item.product.name} calculated from physical stock`
+        );
+      }
+    }
+
+    return pid;
+  })();
+
+  const wheatBefore = currentProductStock(wheat.id) + wheatConsumed;
+  const warning = wheatConsumed > wheatBefore + 0.001
+    ? `Recorded wheat stock is ${round2(wheatBefore)} KG, but ${wheatConsumed} KG was used. Production was saved because physical wheat may exist without a purchase entry.`
+    : '';
+
+  return { id, warning, items };
+};
 
 app.post('/api/production', (req,res)=>{
   try{
-    const date=req.body.date||today();
-    const wheatConsumed=round2(asNumber(req.body.wheat_consumed??0,'Wheat consumed'));
-    const items=normalizeProductionItems(req.body.items);
-    if(wheatConsumed===0&&!items.length) throw new Error('Enter wheat consumed or at least one produced product');
-    const wheat=getProduct('Wheat');
-    const wheatBefore=currentProductStock(wheat.id);
-    const wheatWarning=wheatConsumed>wheatBefore+0.001
-      ? `Recorded wheat stock is ${wheatBefore} KG, but ${wheatConsumed} KG was used. Production was saved because physical wheat may exist without a purchase entry. Reconcile Wheat using the physical stock count.`
-      : '';
-    const remarks=String(req.body.remarks??'').trim();
-
-    const id=db.transaction(()=>{
-      const r=db.prepare('INSERT INTO production (date,wheat_consumed,flour_produced,suji_produced,remarks) VALUES (?,?,0,0,?)').run(date,wheatConsumed,remarks);
-      const pid=r.lastInsertRowid;
-      const addItem=db.prepare('INSERT INTO production_items (production_id,product_id,bags_20,bags_40,loose_kg,qty_kg) VALUES (?,?,?,?,?,?)');
-      const addMovement=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
-      if(wheatConsumed) addMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',pid,'Wheat used / ground');
-      for(const item of items){
-        addItem.run(pid,item.productId,item.bags20,item.bags40,item.looseKg,item.totalKg);
-        addMovement.run(date,item.productId,item.totalKg,'IN','production',pid,`${item.product.name} produced`);
-      }
-      return pid;
-    })();
-    res.status(201).json({id,warning:wheatWarning});
+    const date = req.body.date || today();
+    const wheatConsumed = round2(asNumber(req.body.wheat_consumed ?? 0,'Wheat consumed'));
+    const remarks = String(req.body.remarks ?? '').trim();
+    const result = productionFromPhysicalStock({
+      date,
+      wheatConsumed,
+      rawItems:req.body.items,
+      remarks,
+    });
+    res.status(201).json(result);
   }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.post('/api/production/:id/update', (req,res)=>{
   try{
-    const id=asNumber(req.params.id,'Production',{min:1,allowZero:false});
-    const existing=db.prepare('SELECT * FROM production WHERE id=?').get(id);
+    const id = asNumber(req.params.id,'Production',{min:1,allowZero:false});
+    const existing = db.prepare('SELECT * FROM production WHERE id=?').get(id);
     if(!existing) return res.status(404).json({error:'Production record not found'});
-    const date=req.body.date||existing.date;
-    const wheatConsumed=round2(asNumber(req.body.wheat_consumed??0,'Wheat consumed'));
-    const items=normalizeProductionItems(req.body.items);
-    if(wheatConsumed===0&&!items.length) throw new Error('Enter wheat consumed or at least one produced product');
-    const remarks=String(req.body.remarks??'').trim();
-    const wheat=getProduct('Wheat');
 
-    db.transaction(()=>{
-      db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(id);
-      db.prepare('DELETE FROM production_items WHERE production_id=?').run(id);
-      db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?').run(date,wheatConsumed,remarks,id);
-      const addItem=db.prepare('INSERT INTO production_items (production_id,product_id,bags_20,bags_40,loose_kg,qty_kg) VALUES (?,?,?,?,?,?)');
-      const addMovement=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
-      if(wheatConsumed) addMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',id,'Wheat used / ground');
-      for(const item of items){
-        addItem.run(id,item.productId,item.bags20,item.bags40,item.looseKg,item.totalKg);
-        addMovement.run(date,item.productId,item.totalKg,'IN','production',id,`${item.product.name} produced`);
-      }
-    })();
-    const wheatAfterRestore=currentProductStock(wheat.id);
-    const wheatWarning=wheatConsumed>wheatAfterRestore+0.001
-      ? `Recorded wheat stock is ${wheatAfterRestore} KG, but ${wheatConsumed} KG was used. Production was saved because physical wheat may exist without a purchase entry. Reconcile Wheat using the physical stock count.`
-      : '';
-    res.json({id,warning:wheatWarning});
+    const date = req.body.date || existing.date;
+    const wheatConsumed = round2(asNumber(req.body.wheat_consumed ?? 0,'Wheat consumed'));
+    const remarks = String(req.body.remarks ?? '').trim();
+
+    const result = productionFromPhysicalStock({
+      productionId:id,
+      date,
+      wheatConsumed,
+      rawItems:req.body.items,
+      remarks,
+    });
+    res.json(result);
   }catch(e){res.status(400).json({error:e.message})}
 });
 
