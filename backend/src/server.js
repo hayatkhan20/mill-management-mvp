@@ -32,6 +32,13 @@ const requiredText = (value, field) => {
   if (!text) throw new Error(`${field} is required`);
   return text;
 };
+const normalizeBagKg = (value, field = 'Quantity') => {
+  const bags20 = round2(asNumber(value?.bags_20 ?? 0, `${field} 20 KG bags`));
+  const bags40 = round2(asNumber(value?.bags_40 ?? 0, `${field} 40 KG bags`));
+  const looseKg = round2(asNumber(value?.loose_kg ?? value?.qty_kg ?? 0, `${field} loose KG`));
+  const totalKg = round2((bags20 * 20) + (bags40 * 40) + looseKg);
+  return { bags20, bags40, looseKg, totalKg };
+};
 
 const getProduct = (name) => db.prepare('SELECT * FROM products WHERE name = ?').get(name);
 const currentProductStock = (productId) => round2(
@@ -53,6 +60,13 @@ const sourceBalance = (sourceId) => {
   const bardana = db.prepare('SELECT COALESCE(SUM(total_cost),0) AS total FROM bardana_purchases WHERE source_id=?').get(sourceId).total;
   const payment = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM source_payments WHERE source_id=?').get(sourceId).total;
   return round2(Number(opening) + Number(wheat) + Number(bardana) - Number(payment));
+};
+
+const employeeBalance = (employeeId) => {
+  const employee = db.prepare('SELECT COALESCE(opening_balance,0) AS opening FROM employees WHERE id=?').get(employeeId);
+  const salary = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_salary_due WHERE employee_id=?').get(employeeId)?.total || 0;
+  const paid = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_payments WHERE employee_id=?').get(employeeId)?.total || 0;
+  return round2(Number(employee?.opening || 0) + Number(salary) - Number(paid));
 };
 
 const bardanaStock = () => {
@@ -102,6 +116,78 @@ app.use('/api', (req, res, next) => {
     code: 'LICENSE_REQUIRED',
     installation_id: status.installation_id,
   });
+});
+
+app.post('/api/opening/product-stock', (req, res) => {
+  try {
+    const date = req.body.date || today();
+    const productId = asNumber(req.body.product_id, 'Product', { min: 1, allowZero: false });
+    const product = db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name<>'Bardana'").get(productId);
+    if (!product) throw new Error('Select a valid product');
+    const qty = normalizeBagKg(req.body, 'Opening stock');
+    if (qty.totalKg <= 0) throw new Error('Enter opening stock in 20 KG bags, 40 KG bags or loose KG');
+
+    db.transaction(() => {
+      const existing = db.prepare('SELECT id FROM opening_product_stock WHERE product_id=?').get(productId);
+      if (existing) {
+        db.prepare("DELETE FROM stock_movements WHERE reference_type='opening_stock' AND reference_id=?").run(existing.id);
+        db.prepare('UPDATE opening_product_stock SET date=?,bags_20=?,bags_40=?,loose_kg=?,total_kg=? WHERE id=?')
+          .run(date, qty.bags20, qty.bags40, qty.looseKg, qty.totalKg, existing.id);
+        db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?,?)`).run(date, productId, qty.totalKg, 'IN', 'opening_stock', existing.id, 'Opening stock from manual records');
+      } else {
+        const r = db.prepare('INSERT INTO opening_product_stock (date,product_id,bags_20,bags_40,loose_kg,total_kg) VALUES (?,?,?,?,?,?)')
+          .run(date, productId, qty.bags20, qty.bags40, qty.looseKg, qty.totalKg);
+        db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?,?)`).run(date, productId, qty.totalKg, 'IN', 'opening_stock', r.lastInsertRowid, 'Opening stock from manual records');
+      }
+    })();
+
+    res.json({ product_id: productId, ...qty });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/bardana', (req, res) => {
+  try {
+    const date = req.body.date || today();
+    const bags = round2(asNumber(req.body.bags, 'Bardana bags', { min: 0, allowZero: false }));
+    db.transaction(() => {
+      db.prepare("DELETE FROM bardana_movements WHERE reference_type='opening_bardana'").run();
+      db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?)`).run(date, bags, 'IN', 'opening_bardana', 1, 'Opening Bardana from manual records');
+    })();
+    res.json({ bags });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/customer-balance', (req, res) => {
+  try {
+    const id = asNumber(req.body.customer_id, 'Customer', { min: 1, allowZero: false });
+    const amount = round2(asNumber(req.body.amount, 'Amount'));
+    const signed = req.body.balance_type === 'Advance' ? -amount : amount;
+    db.prepare('UPDATE customers SET opening_balance=?,opening_date=? WHERE id=?').run(signed, req.body.date || today(), id);
+    res.json({ id, opening_balance: signed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/source-balance', (req, res) => {
+  try {
+    const id = asNumber(req.body.source_id, 'Source', { min: 1, allowZero: false });
+    const amount = round2(asNumber(req.body.amount, 'Amount'));
+    const signed = req.body.balance_type === 'Advance' ? -amount : amount;
+    db.prepare('UPDATE sources SET opening_balance=?,opening_date=? WHERE id=?').run(signed, req.body.date || today(), id);
+    res.json({ id, opening_balance: signed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+app.post('/api/opening/employee-balance', (req, res) => {
+  try {
+    const id = asNumber(req.body.employee_id, 'Employee', { min: 1, allowZero: false });
+    const amount = round2(asNumber(req.body.amount, 'Amount'));
+    const signed = req.body.balance_type === 'Advance' ? -amount : amount;
+    db.prepare('UPDATE employees SET opening_balance=?,opening_date=? WHERE id=?').run(signed, req.body.date || today(), id);
+    res.json({ id, opening_balance: signed });
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.get('/api/products', (req, res) => {
@@ -673,62 +759,48 @@ app.get('/api/bardana/stock', (_req, res) => {
 
 app.get('/api/production', (req, res) => {
   const limit = Math.min(Number(req.query.limit) || 100, 500);
-  const rows = db.prepare('SELECT id,date,wheat_consumed,remarks,created_at FROM production ORDER BY date DESC, id DESC LIMIT ?').all(limit);
+  const rows = db.prepare('SELECT id,date,wheat_consumed,remarks,created_at FROM production ORDER BY date DESC,id DESC LIMIT ?').all(limit);
   const getItems = db.prepare(`
-    SELECT pi.id, pi.product_id, p.name AS product_name, pi.qty_kg
+    SELECT pi.id,pi.product_id,p.name AS product_name,pi.bags_20,pi.bags_40,pi.loose_kg,pi.qty_kg
     FROM production_items pi JOIN products p ON p.id=pi.product_id
     WHERE pi.production_id=? ORDER BY p.name COLLATE NOCASE
   `);
-  res.json(rows.map((row) => ({ ...row, items: getItems.all(row.id) })));
+  res.json(rows.map(row => ({ ...row, items: getItems.all(row.id) })));
 });
 
-app.post('/api/production', (req, res) => {
-  try {
-    const date = req.body.date || today();
-    const wheatConsumed = asNumber(req.body.wheat_consumed ?? 0, 'Wheat consumed');
-    const rawItems = Array.isArray(req.body.items) ? req.body.items : [];
-    const normalizedItems = rawItems
-      .map((item, index) => {
-        const productId = asNumber(item.product_id, `Product ${index + 1}`, { min: 1, allowZero: false });
-        const qtyKg = asNumber(item.qty_kg ?? 0, `Product ${index + 1} KG`);
-        if (qtyKg === 0) return null;
-        const product = db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-        if (!product || product.name === 'Wheat') throw new Error(`Product ${index + 1} is invalid`);
-        return { product, productId, qtyKg: round2(qtyKg) };
-      })
-      .filter(Boolean);
+const normalizeProductionItems = (rawItems) => (Array.isArray(rawItems) ? rawItems : []).map((item,index)=>{
+  const productId=asNumber(item.product_id,`Product ${index+1}`,{min:1,allowZero:false});
+  const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
+  if(!product) throw new Error(`Product ${index+1} is invalid`);
+  const qty=normalizeBagKg(item,`Product ${index+1}`);
+  if(qty.totalKg===0) return null;
+  return {product,productId,...qty};
+}).filter(Boolean);
 
-    if (wheatConsumed === 0 && normalizedItems.length === 0) throw new Error('Enter wheat consumed or at least one produced product');
-    const seen = new Set();
-    for (const item of normalizedItems) {
-      if (seen.has(item.productId)) throw new Error(`${item.product.name} is entered more than once`);
-      seen.add(item.productId);
-    }
+app.post('/api/production', (req,res)=>{
+  try{
+    const date=req.body.date||today();
+    const wheatConsumed=round2(asNumber(req.body.wheat_consumed??0,'Wheat consumed'));
+    const items=normalizeProductionItems(req.body.items);
+    if(wheatConsumed===0&&!items.length) throw new Error('Enter wheat consumed or at least one produced product');
+    const wheat=getProduct('Wheat');
+    if(wheatConsumed>currentProductStock(wheat.id)+0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
+    const remarks=String(req.body.remarks??'').trim();
 
-    const wheat = getProduct('Wheat');
-    if (wheatConsumed > currentProductStock(wheat.id) + 0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
-    const remarks = String(req.body.remarks ?? '').trim();
-
-    const tx = db.transaction(() => {
-      const r = db.prepare(`INSERT INTO production (date,wheat_consumed,flour_produced,suji_produced,remarks)
-        VALUES (?,?,0,0,?)`).run(date, wheatConsumed, remarks);
-      const productionId = r.lastInsertRowid;
-      const insertItem = db.prepare('INSERT INTO production_items (production_id,product_id,qty_kg) VALUES (?,?,?)');
-      const insertMovement = db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
-        VALUES (?,?,?,?,?,?,?)`);
-      if (wheatConsumed) insertMovement.run(date, wheat.id, -wheatConsumed, 'OUT', 'production', productionId, 'Wheat used / ground');
-      for (const item of normalizedItems) {
-        insertItem.run(productionId, item.productId, item.qtyKg);
-        insertMovement.run(date, item.productId, item.qtyKg, 'IN', 'production', productionId, `${item.product.name} produced`);
+    const id=db.transaction(()=>{
+      const r=db.prepare('INSERT INTO production (date,wheat_consumed,flour_produced,suji_produced,remarks) VALUES (?,?,0,0,?)').run(date,wheatConsumed,remarks);
+      const pid=r.lastInsertRowid;
+      const addItem=db.prepare('INSERT INTO production_items (production_id,product_id,bags_20,bags_40,loose_kg,qty_kg) VALUES (?,?,?,?,?,?)');
+      const addMovement=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
+      if(wheatConsumed) addMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',pid,'Wheat used / ground');
+      for(const item of items){
+        addItem.run(pid,item.productId,item.bags20,item.bags40,item.looseKg,item.totalKg);
+        addMovement.run(date,item.productId,item.totalKg,'IN','production',pid,`${item.product.name} produced`);
       }
-      return productionId;
-    });
-
-    const id = tx();
-    res.status(201).json({ id });
-  } catch (e) {
-    res.status(400).json({ error: e.message });
-  }
+      return pid;
+    })();
+    res.status(201).json({id});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.post('/api/production/:id/update', (req,res)=>{
@@ -737,41 +809,23 @@ app.post('/api/production/:id/update', (req,res)=>{
     const existing=db.prepare('SELECT * FROM production WHERE id=?').get(id);
     if(!existing) return res.status(404).json({error:'Production record not found'});
     const date=req.body.date||existing.date;
-    const wheatConsumed=asNumber(req.body.wheat_consumed??0,'Wheat consumed');
-    const rawItems=Array.isArray(req.body.items)?req.body.items:[];
-    const normalizedItems=rawItems.map((item,index)=>{
-      const productId=asNumber(item.product_id,`Product ${index+1}`,{min:1,allowZero:false});
-      const qtyKg=asNumber(item.qty_kg??0,`Product ${index+1} KG`);
-      if(qtyKg===0) return null;
-      const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-      if(!product||['Wheat','Bardana'].includes(product.name)) throw new Error(`Product ${index+1} is invalid`);
-      return {product,productId,qtyKg:round2(qtyKg)};
-    }).filter(Boolean);
-    if(wheatConsumed===0&&!normalizedItems.length) throw new Error('Enter wheat consumed or at least one produced product');
+    const wheatConsumed=round2(asNumber(req.body.wheat_consumed??0,'Wheat consumed'));
+    const items=normalizeProductionItems(req.body.items);
+    if(wheatConsumed===0&&!items.length) throw new Error('Enter wheat consumed or at least one produced product');
     const remarks=String(req.body.remarks??'').trim();
     const wheat=getProduct('Wheat');
 
     db.transaction(()=>{
       db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(id);
       if(wheatConsumed>currentProductStock(wheat.id)+0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
-      for(const item of normalizedItems){
-        if(currentProductStock(item.productId)+item.qtyKg < -0.001) throw new Error(`Cannot reduce ${item.product.name} production below quantity already sold or consumed later.`);
-      }
-      const oldProductIds=db.prepare('SELECT product_id FROM production_items WHERE production_id=?').all(id).map(r=>r.product_id);
-      for(const productId of oldProductIds){
-        if(!normalizedItems.some(i=>i.productId===productId) && currentProductStock(productId) < -0.001){
-          const p=db.prepare('SELECT name FROM products WHERE id=?').get(productId);
-          throw new Error(`Cannot remove ${p.name} production because later records already use it.`);
-        }
-      }
       db.prepare('DELETE FROM production_items WHERE production_id=?').run(id);
       db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?').run(date,wheatConsumed,remarks,id);
-      const insertItem=db.prepare('INSERT INTO production_items (production_id,product_id,qty_kg) VALUES (?,?,?)');
-      const insertMovement=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
-      if(wheatConsumed) insertMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',id,'Wheat used / ground');
-      for(const item of normalizedItems){
-        insertItem.run(id,item.productId,item.qtyKg);
-        insertMovement.run(date,item.productId,item.qtyKg,'IN','production',id,`${item.product.name} produced`);
+      const addItem=db.prepare('INSERT INTO production_items (production_id,product_id,bags_20,bags_40,loose_kg,qty_kg) VALUES (?,?,?,?,?,?)');
+      const addMovement=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
+      if(wheatConsumed) addMovement.run(date,wheat.id,-wheatConsumed,'OUT','production',id,'Wheat used / ground');
+      for(const item of items){
+        addItem.run(id,item.productId,item.bags20,item.bags40,item.looseKg,item.totalKg);
+        addMovement.run(date,item.productId,item.totalKg,'IN','production',id,`${item.product.name} produced`);
       }
     })();
     res.json({id});
