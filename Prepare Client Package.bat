@@ -56,7 +56,22 @@ if errorlevel 1 goto :error
 
 echo.
 echo Creating clean portable client copy...
+
+rem Stop only an older portable Mill Manager instance from this release folder.
+rem This avoids locked mill.db, logs, better_sqlite3.node and runtime\node.exe files.
+if exist "%DEST%\runtime\node.exe" (
+  echo Stopping previous portable release instance...
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$target=[IO.Path]::GetFullPath('%DEST%\runtime\node.exe'); Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.ExecutablePath -and ([IO.Path]::GetFullPath($_.ExecutablePath) -eq $target) } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"
+  timeout /t 2 /nobreak >nul
+)
+
 if exist "%DEST%" rmdir /s /q "%DEST%"
+if exist "%DEST%" (
+  echo ERROR: Previous release folder is still in use.
+  echo Close any Mill Manager windows/processes or restart Windows, then run this file again.
+  goto :error
+)
+
 if exist "%ZIP%" del /q "%ZIP%"
 if not exist "%RELEASE_ROOT%" mkdir "%RELEASE_ROOT%"
 mkdir "%DEST%"
