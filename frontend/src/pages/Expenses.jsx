@@ -58,6 +58,7 @@ export default function Expenses(){
    {data&&<div className="stats-grid mini">
     <Card><div className="stat-label">{t('wheatPurchases','Wheat Purchases')}</div><div className="stat-value">{money(data.summary.wheat)}</div></Card>
     <Card><div className="stat-label">{t('bardanaPurchases','Bardana Purchases')}</div><div className="stat-value">{money(data.summary.bardana)}</div></Card>
+    <Card><div className="stat-label">Employee Salaries</div><div className="stat-value">{money(data.summary.salary||0)}</div></Card>
     <Card><div className="stat-label">{t('otherExpenses','Other Expenses')}</div><div className="stat-value">{money(data.summary.other)}</div></Card>
    </div>}
    {data&&<div className="note-card"><strong>{t('totalExpenses','Total Expenses')}: {money(data.summary.total)}</strong></div>}
