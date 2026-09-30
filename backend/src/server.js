@@ -802,7 +802,10 @@ app.post('/api/production', (req,res)=>{
     const items=normalizeProductionItems(req.body.items);
     if(wheatConsumed===0&&!items.length) throw new Error('Enter wheat consumed or at least one produced product');
     const wheat=getProduct('Wheat');
-    if(wheatConsumed>currentProductStock(wheat.id)+0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
+    const wheatBefore=currentProductStock(wheat.id);
+    const wheatWarning=wheatConsumed>wheatBefore+0.001
+      ? `Recorded wheat stock is ${wheatBefore} KG, but ${wheatConsumed} KG was used. Production was saved because physical wheat may exist without a purchase entry. Reconcile Wheat using the physical stock count.`
+      : '';
     const remarks=String(req.body.remarks??'').trim();
 
     const id=db.transaction(()=>{
@@ -817,7 +820,7 @@ app.post('/api/production', (req,res)=>{
       }
       return pid;
     })();
-    res.status(201).json({id});
+    res.status(201).json({id,warning:wheatWarning});
   }catch(e){res.status(400).json({error:e.message})}
 });
 
@@ -835,7 +838,6 @@ app.post('/api/production/:id/update', (req,res)=>{
 
     db.transaction(()=>{
       db.prepare("DELETE FROM stock_movements WHERE reference_type='production' AND reference_id=?").run(id);
-      if(wheatConsumed>currentProductStock(wheat.id)+0.001) throw new Error('Wheat consumed cannot exceed current wheat stock');
       db.prepare('DELETE FROM production_items WHERE production_id=?').run(id);
       db.prepare('UPDATE production SET date=?,wheat_consumed=?,remarks=? WHERE id=?').run(date,wheatConsumed,remarks,id);
       const addItem=db.prepare('INSERT INTO production_items (production_id,product_id,bags_20,bags_40,loose_kg,qty_kg) VALUES (?,?,?,?,?,?)');
@@ -846,7 +848,11 @@ app.post('/api/production/:id/update', (req,res)=>{
         addMovement.run(date,item.productId,item.totalKg,'IN','production',id,`${item.product.name} produced`);
       }
     })();
-    res.json({id});
+    const wheatAfterRestore=currentProductStock(wheat.id);
+    const wheatWarning=wheatConsumed>wheatAfterRestore+0.001
+      ? `Recorded wheat stock is ${wheatAfterRestore} KG, but ${wheatConsumed} KG was used. Production was saved because physical wheat may exist without a purchase entry. Reconcile Wheat using the physical stock count.`
+      : '';
+    res.json({id,warning:wheatWarning});
   }catch(e){res.status(400).json({error:e.message})}
 });
 
