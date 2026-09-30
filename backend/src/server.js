@@ -412,6 +412,24 @@ app.get('/api/customers/:id', (req, res) => {
   });
 });
 
+app.get('/api/customers-summary', (_req, res) => {
+  const rows = db.prepare('SELECT id FROM customers').all();
+  let receivable = 0;
+  let advance = 0;
+  for (const row of rows) {
+    const balance = customerBalance(row.id);
+    if (balance > 0) receivable += balance;
+    if (balance < 0) advance += Math.abs(balance);
+  }
+  const receivedOnBills = db.prepare('SELECT COALESCE(SUM(received_amount),0) AS total FROM sales').get().total;
+  const laterPayments = db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM payments').get().total;
+  res.json({
+    total_received: round2(Number(receivedOnBills) + Number(laterPayments)),
+    total_receivable: round2(receivable),
+    total_customer_advance: round2(advance),
+  });
+});
+
 app.post('/api/payments', (req, res) => {
   try {
     const customerId = asNumber(req.body.customer_id, 'Customer', { min: 1, allowZero: false });
@@ -1102,6 +1120,89 @@ app.post('/api/consumption/:id/update', (req,res)=>{
   }catch(e){res.status(400).json({error:e.message})}
 });
 
+app.get('/api/employees', (_req,res)=>{
+  const rows=db.prepare(`
+    SELECT e.*,
+      ROUND(COALESCE((SELECT SUM(amount) FROM employee_salary_due s WHERE s.employee_id=e.id),0),2) AS total_salary,
+      ROUND(COALESCE((SELECT SUM(amount) FROM employee_payments p WHERE p.employee_id=e.id),0),2) AS total_paid
+    FROM employees e ORDER BY e.name COLLATE NOCASE
+  `).all().map(row=>({...row,balance:employeeBalance(row.id)}));
+  res.json(rows);
+});
+
+app.post('/api/employees', (req,res)=>{
+  try{
+    const name=requiredText(req.body.name,'Employee name');
+    const monthlySalary=round2(asNumber(req.body.monthly_salary??0,'Monthly salary'));
+    const r=db.prepare('INSERT INTO employees (name,phone,address,monthly_salary) VALUES (?,?,?,?)')
+      .run(name,String(req.body.phone??'').trim(),String(req.body.address??'').trim(),monthlySalary);
+    res.status(201).json(db.prepare('SELECT * FROM employees WHERE id=?').get(r.lastInsertRowid));
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.post('/api/employees/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Employee',{min:1,allowZero:false});
+    if(!db.prepare('SELECT id FROM employees WHERE id=?').get(id)) return res.status(404).json({error:'Employee not found'});
+    const name=requiredText(req.body.name,'Employee name');
+    const monthlySalary=round2(asNumber(req.body.monthly_salary??0,'Monthly salary'));
+    db.prepare('UPDATE employees SET name=?,phone=?,address=?,monthly_salary=? WHERE id=?')
+      .run(name,String(req.body.phone??'').trim(),String(req.body.address??'').trim(),monthlySalary,id);
+    res.json(db.prepare('SELECT * FROM employees WHERE id=?').get(id));
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.get('/api/employees/:id', (req,res)=>{
+  const id=Number(req.params.id);
+  const employee=db.prepare('SELECT * FROM employees WHERE id=?').get(id);
+  if(!employee) return res.status(404).json({error:'Employee not found'});
+  const events=db.prepare(`
+    SELECT 'salary' AS type,id,date,created_at,'Salary Due' AS reference,amount AS debit,0 AS credit,note
+    FROM employee_salary_due WHERE employee_id=?
+    UNION ALL
+    SELECT 'payment' AS type,id,date,created_at,'Payment' AS reference,0 AS debit,amount AS credit,note
+    FROM employee_payments WHERE employee_id=?
+    ORDER BY date ASC,created_at ASC,type ASC,id ASC
+  `).all(id,id);
+  if(Number(employee.opening_balance||0)!==0){
+    const opening=Number(employee.opening_balance);
+    events.unshift({type:'opening',id:0,date:employee.opening_date||'',created_at:'',reference:'Opening Balance',debit:opening>0?opening:0,credit:opening<0?Math.abs(opening):0,note:'Opening balance'});
+  }
+  let running=0;
+  const ledger=events.map(e=>{
+    running+=Number(e.debit||0)-Number(e.credit||0);
+    return {...e,balance:round2(running)};
+  }).reverse();
+  const salary=db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_salary_due WHERE employee_id=?').get(id).total;
+  const paid=db.prepare('SELECT COALESCE(SUM(amount),0) AS total FROM employee_payments WHERE employee_id=?').get(id).total;
+  res.json({...employee,total_salary:round2(salary),total_paid:round2(paid),balance:employeeBalance(id),ledger});
+});
+
+app.post('/api/employee-salary', (req,res)=>{
+  try{
+    const employeeId=asNumber(req.body.employee_id,'Employee',{min:1,allowZero:false});
+    const employee=db.prepare('SELECT * FROM employees WHERE id=?').get(employeeId);
+    if(!employee) throw new Error('Employee not found');
+    const amount=round2(asNumber(req.body.amount??employee.monthly_salary,'Salary amount',{min:0,allowZero:false}));
+    const date=req.body.date||today();
+    const note=String(req.body.note??'').trim();
+    const r=db.prepare('INSERT INTO employee_salary_due (employee_id,date,amount,note) VALUES (?,?,?,?)').run(employeeId,date,amount,note);
+    res.status(201).json({id:r.lastInsertRowid,balance:employeeBalance(employeeId)});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.post('/api/employee-payments', (req,res)=>{
+  try{
+    const employeeId=asNumber(req.body.employee_id,'Employee',{min:1,allowZero:false});
+    if(!db.prepare('SELECT id FROM employees WHERE id=?').get(employeeId)) throw new Error('Employee not found');
+    const amount=round2(asNumber(req.body.amount,'Amount',{min:0,allowZero:false}));
+    const date=req.body.date||today();
+    const note=String(req.body.note??'').trim();
+    const r=db.prepare('INSERT INTO employee_payments (employee_id,date,amount,note) VALUES (?,?,?,?)').run(employeeId,date,amount,note);
+    res.status(201).json({id:r.lastInsertRowid,balance:employeeBalance(employeeId)});
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
 app.get('/api/stock/current', (_req, res) => {
   const rows = db.prepare(`
     SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
@@ -1112,19 +1213,69 @@ app.get('/api/stock/current', (_req, res) => {
   res.json(rows);
 });
 
-app.get('/api/stock/daily', (req, res) => {
-  const date = req.query.date || today();
-  const rows = db.prepare(`
-    SELECT p.id,p.name,
-      ROUND(COALESCE(SUM(CASE WHEN sm.date < ? THEN sm.qty_kg ELSE 0 END),0),2) AS opening,
-      ROUND(COALESCE(SUM(CASE WHEN sm.date = ? AND sm.qty_kg > 0 THEN sm.qty_kg ELSE 0 END),0),2) AS in_qty,
-      ROUND(ABS(COALESCE(SUM(CASE WHEN sm.date = ? AND sm.qty_kg < 0 THEN sm.qty_kg ELSE 0 END),0)),2) AS out_qty,
-      ROUND(COALESCE(SUM(CASE WHEN sm.date <= ? THEN sm.qty_kg ELSE 0 END),0),2) AS closing
-    FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
-    WHERE p.is_active=1 AND p.name<>'Bardana'
-    GROUP BY p.id,p.name ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
-  `).all(date, date, date, date);
-  res.json({ date, rows });
+app.get('/api/stock/daily', (req,res)=>{
+  const date=String(req.query.date||today());
+  const products=db.prepare("SELECT id,name FROM products WHERE is_active=1 AND name<>'Bardana' ORDER BY CASE WHEN name='Wheat' THEN 0 ELSE 1 END,name COLLATE NOCASE").all();
+  const rows=products.map(product=>{
+    const priorPhysical=db.prepare('SELECT total_kg FROM physical_stock_counts WHERE product_id=? AND date<? ORDER BY date DESC LIMIT 1').get(product.id,date);
+    const movementOpening=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<?').get(product.id,date).total);
+    const opening=priorPhysical?round2(priorPhysical.total_kg):movementOpening;
+    const sales=round2(Math.abs(db.prepare("SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date=? AND reference_type='sale'").get(product.id,date).total));
+    const consumption=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM product_consumption WHERE product_id=? AND date=?').get(product.id,date).total);
+    const physical=db.prepare('SELECT bags_20,bags_40,loose_kg,total_kg FROM physical_stock_counts WHERE product_id=? AND date=?').get(product.id,date);
+    const recordedProduction=round2(db.prepare(`
+      SELECT COALESCE(SUM(pi.qty_kg),0) AS total
+      FROM production_items pi JOIN production pr ON pr.id=pi.production_id
+      WHERE pi.product_id=? AND pr.date=?`).get(product.id,date).total);
+    const calculatedProduction=physical?round2(Number(physical.total_kg)+sales+consumption-opening):recordedProduction;
+    const totalAvailable=round2(opening+calculatedProduction);
+    const ledgerClosing=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<=?').get(product.id,date).total);
+    return {
+      id:product.id,name:product.name,
+      opening,
+      production:calculatedProduction,
+      recorded_production:recordedProduction,
+      total_available:totalAvailable,
+      sales,
+      consumption,
+      closing:physical?round2(physical.total_kg):ledgerClosing,
+      physical_counted:!!physical,
+      bags_20:physical?.bags_20??0,
+      bags_40:physical?.bags_40??0,
+      loose_kg:physical?.loose_kg??0,
+    };
+  });
+  res.json({date,rows});
+});
+
+app.post('/api/stock/physical-count', (req,res)=>{
+  try{
+    const date=req.body.date||today();
+    const productId=asNumber(req.body.product_id,'Product',{min:1,allowZero:false});
+    const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name<>'Bardana'").get(productId);
+    if(!product) throw new Error('Select a valid product');
+    const qty=normalizeBagKg(req.body,'Physical stock');
+    const id=db.transaction(()=>{
+      let count=db.prepare('SELECT * FROM physical_stock_counts WHERE date=? AND product_id=?').get(date,productId);
+      if(count){
+        db.prepare("DELETE FROM stock_movements WHERE reference_type='physical_adjustment' AND reference_id=?").run(count.id);
+        db.prepare('UPDATE physical_stock_counts SET bags_20=?,bags_40=?,loose_kg=?,total_kg=?,note=? WHERE id=?')
+          .run(qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,String(req.body.note??'').trim(),count.id);
+      }else{
+        const r=db.prepare('INSERT INTO physical_stock_counts (date,product_id,bags_20,bags_40,loose_kg,total_kg,note) VALUES (?,?,?,?,?,?,?)')
+          .run(date,productId,qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,String(req.body.note??'').trim());
+        count={id:r.lastInsertRowid};
+      }
+      const ledger=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<=?').get(productId,date).total);
+      const difference=round2(qty.totalKg-ledger);
+      if(Math.abs(difference)>0.001){
+        db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?,?)`).run(date,productId,difference,difference>=0?'IN':'OUT','physical_adjustment',count.id,'Physical closing stock adjustment');
+      }
+      return count.id;
+    })();
+    res.json({id,product_id:productId,...qty});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.get('/api/stock/monthly', (req, res) => {
@@ -1148,6 +1299,20 @@ app.get('/api/stock/monthly', (req, res) => {
 
 
 
+
+app.get('/api/stock/overall', (_req,res)=>{
+  const rows=db.prepare(`
+    SELECT p.id,p.name,
+      ROUND(COALESCE(SUM(CASE WHEN sm.qty_kg>0 THEN sm.qty_kg ELSE 0 END),0),2) AS total_in,
+      ROUND(ABS(COALESCE(SUM(CASE WHEN sm.qty_kg<0 THEN sm.qty_kg ELSE 0 END),0)),2) AS total_out,
+      ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS current
+    FROM products p LEFT JOIN stock_movements sm ON sm.product_id=p.id
+    WHERE p.is_active=1 AND p.name<>'Bardana'
+    GROUP BY p.id,p.name
+    ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END,p.name COLLATE NOCASE
+  `).all();
+  res.json({rows});
+});
 
 app.get('/api/expenses', (req, res) => {
   const month = String(req.query.month || today().slice(0, 7));
@@ -1178,6 +1343,14 @@ app.get('/api/expenses', (req, res) => {
     ORDER BY b.date DESC,b.id DESC
   `).all(start, end).map((row) => ({ ...row, type: 'Bardana Purchase' }));
 
+  const employeeRows = db.prepare(`
+    SELECT ep.id,ep.date,e.name AS source,ep.amount,ep.note
+    FROM employee_payments ep
+    JOIN employees e ON e.id=ep.employee_id
+    WHERE ep.date>=? AND ep.date<=?
+    ORDER BY ep.date DESC,ep.id DESC
+  `).all(start,end).map(row=>({...row,type:'Employee Salary'}));
+
   const manual = db.prepare(`
     SELECT id,date,category,amount,note
     FROM other_expenses
@@ -1187,6 +1360,7 @@ app.get('/api/expenses', (req, res) => {
 
   const wheatTotal = round2(wheatRows.reduce((sum, row) => sum + Number(row.amount || 0), 0));
   const bardanaTotal = round2([...wheatBardanaRows, ...bardanaRows].reduce((sum, row) => sum + Number(row.amount || 0), 0));
+  const salaryTotal = round2(employeeRows.reduce((sum,row)=>sum+Number(row.amount||0),0));
   const otherTotal = round2(manual.reduce((sum, row) => sum + Number(row.amount || 0), 0));
 
   res.json({
@@ -1194,10 +1368,11 @@ app.get('/api/expenses', (req, res) => {
     summary: {
       wheat: wheatTotal,
       bardana: bardanaTotal,
+      salary: salaryTotal,
       other: otherTotal,
-      total: round2(wheatTotal + bardanaTotal + otherTotal),
+      total: round2(wheatTotal + bardanaTotal + salaryTotal + otherTotal),
     },
-    automatic: [...wheatRows, ...wheatBardanaRows, ...bardanaRows].sort((a, b) => b.date.localeCompare(a.date)),
+    automatic: [...wheatRows, ...wheatBardanaRows, ...bardanaRows, ...employeeRows].sort((a, b) => b.date.localeCompare(a.date)),
     manual,
   });
 });
