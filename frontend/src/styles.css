@@ -238,6 +238,10 @@
 
 
 /* Mill records: bags are the primary display unit */
-.record-bags{display:block;font-size:14px;font-weight:800;color:inherit;white-space:nowrap}
-.record-kg{display:block;font-size:11px;color:#7c8b83;margin-top:3px;font-weight:500}
+.record-bags{display:block;color:inherit;white-space:nowrap;line-height:1.2}
+.bag-count{font-size:16px;font-weight:850}
+.bag-type{font-size:13px;font-weight:650;margin-left:1px}
+.bag-separator{font-size:12px;font-weight:500;color:#66776e}
+.record-kg{display:block;font-size:11px;color:#7c8b83;margin-top:4px;font-weight:500}
+:root[data-theme="dark"] .bag-separator{color:#9fb0a7}
 :root[data-theme="dark"] .record-kg{color:#9fb0a7}
