@@ -48,7 +48,7 @@ export default function Stock(){
   <Card className="section-card-below">
     <h3>End of Day Physical Stock Count</h3>
     <form className="physical-count-grid" onSubmit={saveCount}>
-      <label>Product<select required value={count.product_id} onChange={e=>setCount({...count,product_id:e.target.value})}><option value="">Select product</option>{finishedDaily.map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
+      <label>Product<select required value={count.product_id} onChange={e=>setCount({...count,product_id:e.target.value})}><option value="">Select product</option>{(daily?.rows||[]).map(r=><option key={r.id} value={r.id}>{r.name}</option>)}</select></label>
       <label>20 KG Bags<input type="number" min="0" step="1" value={count.bags_20} onChange={e=>setCount({...count,bags_20:e.target.value})}/></label>
       <label>40 KG Bags<input type="number" min="0" step="1" value={count.bags_40} onChange={e=>setCount({...count,bags_40:e.target.value})}/></label>
       <label>Loose KG<input type="number" min="0" step="0.01" value={count.loose_kg} onChange={e=>setCount({...count,loose_kg:e.target.value})}/></label>
