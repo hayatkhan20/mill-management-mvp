@@ -1205,9 +1205,7 @@ app.get('/api/stock/daily', (req,res)=>{
   const date=String(req.query.date||today());
   const products=db.prepare("SELECT id,name FROM products WHERE is_active=1 AND name<>'Bardana' ORDER BY CASE WHEN name='Wheat' THEN 0 ELSE 1 END,name COLLATE NOCASE").all();
   const rows=products.map(product=>{
-    const priorPhysical=db.prepare('SELECT total_kg FROM physical_stock_counts WHERE product_id=? AND date<? ORDER BY date DESC LIMIT 1').get(product.id,date);
-    const movementOpening=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<?').get(product.id,date).total);
-    const opening=priorPhysical?round2(priorPhysical.total_kg):movementOpening;
+    const opening=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date<?').get(product.id,date).total);
     const sales=round2(Math.abs(db.prepare("SELECT COALESCE(SUM(qty_kg),0) AS total FROM stock_movements WHERE product_id=? AND date=? AND reference_type='sale'").get(product.id,date).total));
     const consumption=round2(db.prepare('SELECT COALESCE(SUM(qty_kg),0) AS total FROM product_consumption WHERE product_id=? AND date=?').get(product.id,date).total);
     const physical=db.prepare('SELECT bags_20,bags_40,loose_kg,total_kg FROM physical_stock_counts WHERE product_id=? AND date=?').get(product.id,date);
