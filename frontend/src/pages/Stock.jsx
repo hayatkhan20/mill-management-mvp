@@ -28,7 +28,15 @@ export default function Stock(){
   <Card>
     <div className="section-title"><h3>Daily Stock Record</h3><DateField value={date} onChange={setDate}/></div>
     <div className="table-wrap"><table><thead><tr><th>Product</th><th>Previous Stock</th><th>Production</th><th>Total</th><th>Sales</th><th>Other Out</th><th>Current Remaining</th></tr></thead><tbody>
-      {finishedDaily.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td><td>{num(r.opening)} KG</td><td><strong>{num(r.production)} KG</strong></td><td>{num(r.total_available)} KG</td><td>{num(r.sales)} KG</td><td>{num(r.consumption)} KG</td><td><strong>{num(r.closing)} KG</strong></td></tr>)}
+      {finishedDaily.map(r=><tr key={r.id}>
+        <td><strong>{r.name}</strong></td>
+        <td><strong>{num(r.opening)} KG</strong><small>{num(r.previous_bags_20)}×20KG + {num(r.previous_bags_40)}×40KG + {num(r.previous_loose_kg)} loose</small></td>
+        <td><strong>{num(r.production)} KG</strong><small>{num(r.production_bags_20)}×20KG + {num(r.production_bags_40)}×40KG + {num(r.production_loose_kg)} loose</small></td>
+        <td><strong>{num(r.total_available)} KG</strong><small>{num(r.total_bags_20)}×20KG + {num(r.total_bags_40)}×40KG + {num(r.total_loose_kg)} loose</small></td>
+        <td><strong>{num(r.sales)} KG</strong><small>{num(r.sales_bags_20)}×20KG + {num(r.sales_bags_40)}×40KG + {num(r.sales_loose_kg)} loose</small></td>
+        <td><strong>{num(r.consumption)} KG</strong><small>{num(r.consumption_bags_20)}×20KG + {num(r.consumption_bags_40)}×40KG + {num(r.consumption_loose_kg)} loose</small></td>
+        <td><strong>{num(r.closing)} KG</strong><small>{num(r.bags_20)}×20KG + {num(r.bags_40)}×40KG + {num(r.loose_kg)} loose</small></td>
+      </tr>)}
     </tbody></table></div>
   </Card>
 
