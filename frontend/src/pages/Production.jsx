@@ -53,7 +53,18 @@ export default function Production(){
     if(!hasCount) return null;
     const d=daily?.rows?.find(r=>String(r.id)===String(productId));
     if(!d) return 0;
-    return Math.max(0,totalKg(item)+Number(d.sales||0)+Number(d.consumption||0)-Number(d.opening||0));
+
+    const bags20=Math.max(0,
+      Number(item.bags_20||0)+Number(d.sales_bags_20||0)+Number(d.consumption_bags_20||0)-Number(d.previous_bags_20||0)
+    );
+    const bags40=Math.max(0,
+      Number(item.bags_40||0)+Number(d.sales_bags_40||0)+Number(d.consumption_bags_40||0)-Number(d.previous_bags_40||0)
+    );
+    const loose=Math.max(0,
+      Number(item.loose_kg||0)+Number(d.sales_loose_kg||0)+Number(d.consumption_loose_kg||0)-Number(d.previous_loose_kg||0)
+    );
+
+    return {bags20,bags40,loose,total:(bags20*20)+(bags40*40)+loose};
   };
 
   const submit=async e=>{
@@ -112,12 +123,15 @@ export default function Production(){
                   const produced=calculatedProduction(product.id);
                   return <tr key={product.id}>
                     <td><strong>{product.name}</strong></td>
-                    <td>{num(d?.opening||0)} KG</td>
+                    <td>
+                      <strong>{num(d?.opening||0)} KG</strong>
+                      <small>{num(d?.previous_bags_20||0)}×20KG + {num(d?.previous_bags_40||0)}×40KG + {num(d?.previous_loose_kg||0)} loose</small>
+                    </td>
                     <td><input type="number" min="0" step="1" value={item.bags_20} onChange={e=>update(product.id,'bags_20',e.target.value)}/></td>
                     <td><input type="number" min="0" step="1" value={item.bags_40} onChange={e=>update(product.id,'bags_40',e.target.value)}/></td>
                     <td><input type="number" min="0" step="0.01" value={item.loose_kg} onChange={e=>update(product.id,'loose_kg',e.target.value)}/></td>
                     <td><strong>{num(totalKg(item))} KG</strong></td>
-                    <td>{produced===null?'—':<strong>{num(produced)} KG</strong>}</td>
+                    <td>{produced===null?'—':<><strong>{num(produced.total)} KG</strong><small>{num(produced.bags20)}×20KG + {num(produced.bags40)}×40KG + {num(produced.loose)} loose</small></>}</td>
                   </tr>;
                 })}
               </tbody>
