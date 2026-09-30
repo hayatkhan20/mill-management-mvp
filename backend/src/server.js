@@ -278,15 +278,31 @@ app.post('/api/products/:id/toggle', (req, res) => {
 app.get('/api/dashboard', (_req, res) => {
   const date = today();
   const products = db.prepare(`
-    SELECT p.id, p.name, ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
+    SELECT p.id, p.name,
+      ROUND(COALESCE(SUM(sm.qty_kg),0),2) AS stock_kg
     FROM products p
     LEFT JOIN stock_movements sm ON sm.product_id = p.id
     WHERE p.is_active=1 AND p.name<>'Bardana'
     GROUP BY p.id, p.name
     ORDER BY CASE WHEN p.name='Wheat' THEN 0 ELSE 1 END, p.name COLLATE NOCASE
-  `).all();
+  `).all().map((row) => {
+    const physical = db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg,date
+      FROM physical_stock_counts
+      WHERE product_id=?
+      ORDER BY date DESC,id DESC LIMIT 1
+    `).get(row.id);
 
-  const wheatToday = db.prepare('SELECT COALESCE(SUM(total_kg),0) AS kg FROM wheat_in WHERE date = ?').get(date).kg;
+    return {
+      ...row,
+      bags_20: round2(physical?.bags_20 || 0),
+      bags_40: round2(physical?.bags_40 || 0),
+      loose_kg: round2(physical?.loose_kg || 0),
+      bag_breakdown_known: Boolean(physical),
+    };
+  });
+
+  const wheatToday = db.prepare('SELECT COALESCE(SUM(total_kg),0) AS kg, COALESCE(SUM(bags),0) AS bags FROM wheat_in WHERE date = ?').get(date);
   const salesToday = db.prepare('SELECT COALESCE(SUM(total_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedOnSales = db.prepare('SELECT COALESCE(SUM(received_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedPayments = db.prepare('SELECT COALESCE(SUM(amount),0) AS amount FROM payments WHERE date = ?').get(date).amount;
@@ -301,7 +317,8 @@ app.get('/api/dashboard', (_req, res) => {
   res.json({
     date,
     stocks: products,
-    wheat_received_today: round2(wheatToday),
+    wheat_received_today: round2(wheatToday.kg),
+    wheat_bags_today: round2(wheatToday.bags),
     sales_today: round2(salesToday),
     received_today: round2(receivedOnSales + receivedPayments),
     total_pending: round2(pending),
@@ -825,6 +842,7 @@ const productionFromPhysicalStock = ({ productionId = null, date, wheatConsumed,
       WHERE product_id=? AND date<?
       ORDER BY date DESC LIMIT 1
     `).get(productId,date) : null;
+    const previousKnown = Boolean(previousPhysical || openingRecord);
     const previous = previousPhysical || openingRecord || { bags_20:0,bags_40:0,loose_kg:0,total_kg:opening };
 
     const saleBreakdown = db.prepare(`
@@ -847,18 +865,39 @@ const productionFromPhysicalStock = ({ productionId = null, date, wheatConsumed,
       WHERE product_id=? AND date=?
     `).get(productId,date);
 
-    const productionBags20 = Math.max(0, round2(
-      qty.bags20 + Number(saleBreakdown.bags_20||0) + Number(consumptionBreakdown.bags_20||0) - Number(previous.bags_20||0)
+    // The mill counts total physical stock. Production is the positive quantity
+    // required to reach that stock after accounting for today's outflow.
+    const productionKg = Math.max(0, round2(
+      qty.totalKg
+      + Number(saleBreakdown.total_kg||0)
+      + Number(consumptionBreakdown.total_kg||0)
+      - opening
     ));
-    const productionBags40 = Math.max(0, round2(
-      qty.bags40 + Number(saleBreakdown.bags_40||0) + Number(consumptionBreakdown.bags_40||0) - Number(previous.bags_40||0)
-    ));
-    const productionLooseKg = Math.max(0, round2(
-      qty.looseKg + Number(saleBreakdown.loose_kg||0) + Number(consumptionBreakdown.loose_kg||0) - Number(previous.loose_kg||0)
-    ));
-    const productionKg = round2(
-      productionBags20*20 + productionBags40*40 + productionLooseKg
-    );
+
+    let productionBags20 = 0;
+    let productionBags40 = 0;
+    let productionLooseKg = 0;
+    let productionBreakdownKnown = false;
+
+    if (previousKnown) {
+      const candidate20 = Math.max(0, round2(
+        qty.bags20 + Number(saleBreakdown.bags_20||0) + Number(consumptionBreakdown.bags_20||0) - Number(previous.bags_20||0)
+      ));
+      const candidate40 = Math.max(0, round2(
+        qty.bags40 + Number(saleBreakdown.bags_40||0) + Number(consumptionBreakdown.bags_40||0) - Number(previous.bags_40||0)
+      ));
+      const candidateLoose = Math.max(0, round2(
+        qty.looseKg + Number(saleBreakdown.loose_kg||0) + Number(consumptionBreakdown.loose_kg||0) - Number(previous.loose_kg||0)
+      ));
+      const candidateKg = round2(candidate20*20 + candidate40*40 + candidateLoose);
+
+      if (Math.abs(candidateKg - productionKg) <= 0.01) {
+        productionBags20 = candidate20;
+        productionBags40 = candidate40;
+        productionLooseKg = candidateLoose;
+        productionBreakdownKnown = true;
+      }
+    }
 
     return {
       productId,
@@ -866,11 +905,13 @@ const productionFromPhysicalStock = ({ productionId = null, date, wheatConsumed,
       ...qty,
       opening,
       previous,
+      previousKnown,
       saleBreakdown,
       consumptionBreakdown,
       productionBags20,
       productionBags40,
       productionLooseKg,
+      productionBreakdownKnown,
       productionKg,
     };
   }).filter(Boolean);
@@ -1379,7 +1420,8 @@ app.get('/api/stock/daily', (req,res)=>{
       WHERE product_id=? AND date<?
       ORDER BY date DESC LIMIT 1
     `).get(product.id,date):null;
-    const previous=previousPhysical||openingRecord||{bags_20:0,bags_40:0,loose_kg:opening,total_kg:opening};
+    const previousKnown=Boolean(previousPhysical||openingRecord);
+    const previous=previousPhysical||openingRecord||{bags_20:0,bags_40:0,loose_kg:0,total_kg:opening};
 
     const saleBreakdown=db.prepare(`
       SELECT
@@ -1428,11 +1470,15 @@ app.get('/api/stock/daily', (req,res)=>{
       previous_bags_20:round2(previous.bags_20||0),
       previous_bags_40:round2(previous.bags_40||0),
       previous_loose_kg:round2(previous.loose_kg||0),
+      previous_breakdown_known:previousKnown,
 
       production:productionKg,
       production_bags_20:round2(production.bags_20||0),
       production_bags_40:round2(production.bags_40||0),
       production_loose_kg:round2(production.loose_kg||0),
+      production_breakdown_known: productionKg===0 || Math.abs(
+        (Number(production.bags_20||0)*20)+(Number(production.bags_40||0)*40)+Number(production.loose_kg||0)-productionKg
+      )<=0.01,
 
       total_available:totalAvailable,
       total_bags_20:round2(Number(previous.bags_20||0)+Number(production.bags_20||0)),
@@ -1451,6 +1497,7 @@ app.get('/api/stock/daily', (req,res)=>{
 
       closing:physical?round2(physical.total_kg):ledgerClosing,
       physical_counted:!!physical,
+      bag_breakdown_known:!!physical,
       bags_20:round2(physical?.bags_20||0),
       bags_40:round2(physical?.bags_40||0),
       loose_kg:round2(physical?.loose_kg||0),
@@ -1636,26 +1683,55 @@ app.get('/api/appendix/daily', (req, res) => {
     WHERE product_id=? AND date<=?
   `).get(wheat.id, date).total) : 0;
 
-  const rows = db.prepare(`
-    SELECT p.id, p.name,
-      ROUND(COALESCE((
-        SELECT SUM(pi.qty_kg)
-        FROM production_items pi
-        JOIN production pr ON pr.id=pi.production_id
-        WHERE pr.date=? AND pi.product_id=p.id
-      ),0),2) AS produced_kg,
-      ROUND(COALESCE((
-        SELECT SUM(sm.qty_kg)
-        FROM stock_movements sm
-        WHERE sm.product_id=p.id AND sm.date<=?
-      ),0),2) AS closing_kg
-    FROM products p
-    WHERE p.is_active=1 AND p.name<>'Bardana' AND p.name<>'Wheat'
-    ORDER BY p.name COLLATE NOCASE
-  `).all(date, date).map((row) => ({
-    ...row,
-    percentage: wheatUsed > 0 ? round2((Number(row.produced_kg) / wheatUsed) * 100) : 0,
-  }));
+  const products = db.prepare(`
+    SELECT id,name FROM products
+    WHERE is_active=1 AND name<>'Bardana' AND name<>'Wheat'
+    ORDER BY name COLLATE NOCASE
+  `).all();
+
+  const rows = products.map((product) => {
+    const produced = db.prepare(`
+      SELECT
+        COALESCE(SUM(pi.bags_20),0) AS bags_20,
+        COALESCE(SUM(pi.bags_40),0) AS bags_40,
+        COALESCE(SUM(pi.loose_kg),0) AS loose_kg,
+        COALESCE(SUM(pi.qty_kg),0) AS total_kg
+      FROM production_items pi
+      JOIN production pr ON pr.id=pi.production_id
+      WHERE pr.date=? AND pi.product_id=?
+    `).get(date,product.id);
+
+    const closingKg = round2(db.prepare(`
+      SELECT COALESCE(SUM(qty_kg),0) AS total
+      FROM stock_movements
+      WHERE product_id=? AND date<=?
+    `).get(product.id,date).total);
+
+    const closing = db.prepare(`
+      SELECT bags_20,bags_40,loose_kg,total_kg
+      FROM physical_stock_counts
+      WHERE product_id=? AND date<=?
+      ORDER BY date DESC,id DESC LIMIT 1
+    `).get(product.id,date);
+
+    return {
+      id:product.id,
+      name:product.name,
+      produced_kg:round2(produced.total_kg||0),
+      produced_bags_20:round2(produced.bags_20||0),
+      produced_bags_40:round2(produced.bags_40||0),
+      produced_loose_kg:round2(produced.loose_kg||0),
+      produced_breakdown_known:Number(produced.total_kg||0)===0 || Math.abs(
+        (Number(produced.bags_20||0)*20)+(Number(produced.bags_40||0)*40)+Number(produced.loose_kg||0)-Number(produced.total_kg||0)
+      )<=0.01,
+      closing_kg:closingKg,
+      closing_bags_20:round2(closing?.bags_20||0),
+      closing_bags_40:round2(closing?.bags_40||0),
+      closing_loose_kg:round2(closing?.loose_kg||0),
+      closing_breakdown_known:Boolean(closing),
+      percentage:wheatUsed>0?round2((Number(produced.total_kg||0)/wheatUsed)*100):0,
+    };
+  });
 
   const totalProduced = round2(rows.reduce((sum, row) => sum + Number(row.produced_kg || 0), 0));
 
