@@ -112,6 +112,9 @@ CREATE TABLE IF NOT EXISTS production_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   production_id INTEGER NOT NULL,
   product_id INTEGER NOT NULL,
+  bags_20 REAL NOT NULL DEFAULT 0,
+  bags_40 REAL NOT NULL DEFAULT 0,
+  loose_kg REAL NOT NULL DEFAULT 0,
   qty_kg REAL NOT NULL,
   FOREIGN KEY(production_id) REFERENCES production(id) ON DELETE CASCADE,
   FOREIGN KEY(product_id) REFERENCES products(id),
@@ -180,11 +183,71 @@ CREATE TABLE IF NOT EXISTS product_consumption (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   date TEXT NOT NULL,
   product_id INTEGER NOT NULL,
+  bags_20 REAL NOT NULL DEFAULT 0,
+  bags_40 REAL NOT NULL DEFAULT 0,
+  loose_kg REAL NOT NULL DEFAULT 0,
   qty_kg REAL NOT NULL,
   reason TEXT NOT NULL,
   remarks TEXT,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(product_id) REFERENCES products(id)
+);
+
+CREATE TABLE IF NOT EXISTS opening_product_stock (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  product_id INTEGER NOT NULL UNIQUE,
+  bags_20 REAL NOT NULL DEFAULT 0,
+  bags_40 REAL NOT NULL DEFAULT 0,
+  loose_kg REAL NOT NULL DEFAULT 0,
+  total_kg REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(product_id) REFERENCES products(id)
+);
+
+CREATE TABLE IF NOT EXISTS physical_stock_counts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  product_id INTEGER NOT NULL,
+  bags_20 REAL NOT NULL DEFAULT 0,
+  bags_40 REAL NOT NULL DEFAULT 0,
+  loose_kg REAL NOT NULL DEFAULT 0,
+  total_kg REAL NOT NULL DEFAULT 0,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(date, product_id),
+  FOREIGN KEY(product_id) REFERENCES products(id)
+);
+
+CREATE TABLE IF NOT EXISTS employees (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  phone TEXT,
+  address TEXT,
+  monthly_salary REAL NOT NULL DEFAULT 0,
+  opening_balance REAL NOT NULL DEFAULT 0,
+  opening_date TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS employee_salary_due (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  amount REAL NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(employee_id) REFERENCES employees(id)
+);
+
+CREATE TABLE IF NOT EXISTS employee_payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL,
+  date TEXT NOT NULL,
+  amount REAL NOT NULL,
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY(employee_id) REFERENCES employees(id)
 );
 
 
@@ -197,6 +260,10 @@ CREATE INDEX IF NOT EXISTS idx_source_payments_source ON source_payments(source_
 CREATE INDEX IF NOT EXISTS idx_bardana_purchases_source ON bardana_purchases(source_id);
 CREATE INDEX IF NOT EXISTS idx_bardana_movements_date ON bardana_movements(date);
 CREATE INDEX IF NOT EXISTS idx_other_expenses_date ON other_expenses(date);
+CREATE INDEX IF NOT EXISTS idx_opening_product_stock_product ON opening_product_stock(product_id);
+CREATE INDEX IF NOT EXISTS idx_physical_stock_counts_date ON physical_stock_counts(date);
+CREATE INDEX IF NOT EXISTS idx_employee_salary_due_employee ON employee_salary_due(employee_id);
+CREATE INDEX IF NOT EXISTS idx_employee_payments_employee ON employee_payments(employee_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_bardana_reference ON bardana_movements(reference_type, reference_id);
 `);
 
@@ -251,6 +318,36 @@ if (!sourcePaymentColumns.some((column) => column.name === 'reference_type')) {
 if (!sourcePaymentColumns.some((column) => column.name === 'reference_id')) {
   db.exec('ALTER TABLE source_payments ADD COLUMN reference_id INTEGER;');
 }
+
+const productionItemColumns = db.prepare('PRAGMA table_info(production_items)').all();
+if (!productionItemColumns.some((column) => column.name === 'bags_20')) {
+  db.exec('ALTER TABLE production_items ADD COLUMN bags_20 REAL NOT NULL DEFAULT 0;');
+}
+if (!productionItemColumns.some((column) => column.name === 'bags_40')) {
+  db.exec('ALTER TABLE production_items ADD COLUMN bags_40 REAL NOT NULL DEFAULT 0;');
+}
+if (!productionItemColumns.some((column) => column.name === 'loose_kg')) {
+  db.exec('ALTER TABLE production_items ADD COLUMN loose_kg REAL NOT NULL DEFAULT 0;');
+}
+
+const consumptionColumns = db.prepare('PRAGMA table_info(product_consumption)').all();
+if (!consumptionColumns.some((column) => column.name === 'bags_20')) {
+  db.exec('ALTER TABLE product_consumption ADD COLUMN bags_20 REAL NOT NULL DEFAULT 0;');
+}
+if (!consumptionColumns.some((column) => column.name === 'bags_40')) {
+  db.exec('ALTER TABLE product_consumption ADD COLUMN bags_40 REAL NOT NULL DEFAULT 0;');
+}
+if (!consumptionColumns.some((column) => column.name === 'loose_kg')) {
+  db.exec('ALTER TABLE product_consumption ADD COLUMN loose_kg REAL NOT NULL DEFAULT 0;');
+}
+
+// Preserve legacy KG-only records as loose KG.
+db.prepare(`UPDATE production_items
+  SET loose_kg=qty_kg
+  WHERE COALESCE(bags_20,0)=0 AND COALESCE(bags_40,0)=0 AND COALESCE(loose_kg,0)=0 AND qty_kg>0`).run();
+db.prepare(`UPDATE product_consumption
+  SET loose_kg=qty_kg
+  WHERE COALESCE(bags_20,0)=0 AND COALESCE(bags_40,0)=0 AND COALESCE(loose_kg,0)=0 AND qty_kg>0`).run();
 
 db.exec('CREATE INDEX IF NOT EXISTS idx_wheat_source ON wheat_in(source_id);');
 db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_source_payment_reference ON source_payments(reference_type, reference_id) WHERE reference_type IS NOT NULL AND reference_id IS NOT NULL;");
