@@ -33,8 +33,8 @@ export default function Consumption(){
       <form className="form-grid" onSubmit={submit}>
         <label>Date (DD/MM/YYYY)<DateField required value={form.date} onChange={date=>setForm({...form,date})}/></label>
         <label>Product<select required value={form.product_id} onChange={e=>setForm({...form,product_id:e.target.value})}><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-        <label>20 KG Bags<input type="number" min="0" step="1" value={form.bags_20} onChange={e=>setForm({...form,bags_20:e.target.value})}/></label>
-        <label>40 KG Bags<input type="number" min="0" step="1" value={form.bags_40} onChange={e=>setForm({...form,bags_40:e.target.value})}/></label>
+        <label>20 K Bags<input type="number" min="0" step="1" value={form.bags_20} onChange={e=>setForm({...form,bags_20:e.target.value})}/></label>
+        <label>40 K Bags<input type="number" min="0" step="1" value={form.bags_40} onChange={e=>setForm({...form,bags_40:e.target.value})}/></label>
         <label>Loose KG<input type="number" min="0" step="0.01" value={form.loose_kg} onChange={e=>setForm({...form,loose_kg:e.target.value})}/></label>
         <label>Total KG<input readOnly value={num(totalKg(form))}/></label>
         <label>Reason<select value={form.reason} onChange={e=>setForm({...form,reason:e.target.value})}><option>Home</option><option>Company / Mill Use</option><option>Donation</option><option>Other</option></select></label>
