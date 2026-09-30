@@ -110,8 +110,8 @@ export default function Production(){
                 <tr>
                   <th>Product</th>
                   <th>Previous Stock</th>
-                  <th>20 KG Bags</th>
-                  <th>40 KG Bags</th>
+                  <th>20 K Bags</th>
+                  <th>40 K Bags</th>
                   <th>Loose KG</th>
                   <th>Total Stock</th>
                   <th>Calculated Production</th>
