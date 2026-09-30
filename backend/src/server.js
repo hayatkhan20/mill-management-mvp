@@ -1485,5 +1485,11 @@ app.use((err, _req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Mill Management v1.0 running at http://localhost:${PORT}`);
+  if (LICENSE_BYPASS) {
+    console.log(`Mill Management DEV API running at http://localhost:${PORT}`);
+    console.log('License check: BYPASSED for development only');
+  } else {
+    console.log(`Mill Management v1.0 running at http://localhost:${PORT}`);
+    console.log('License check: ENABLED');
+  }
 });
