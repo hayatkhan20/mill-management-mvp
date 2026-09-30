@@ -1043,56 +1043,41 @@ app.post('/api/sales/:id/update', (req,res)=>{
   }
 });
 
-app.get('/api/consumption', (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 100, 500);
+app.get('/api/consumption', (req,res)=>{
+  const limit=Math.min(Number(req.query.limit)||100,500);
   res.json(db.prepare(`
-    SELECT pc.*, p.name AS product_name
+    SELECT pc.*,p.name AS product_name
     FROM product_consumption pc
     JOIN products p ON p.id=pc.product_id
-    ORDER BY pc.date DESC, pc.id DESC
+    ORDER BY pc.date DESC,pc.id DESC
     LIMIT ?
   `).all(limit));
 });
 
-app.post('/api/consumption', (req, res) => {
-  try {
-    const date = req.body.date || today();
-    const productId = asNumber(req.body.product_id, 'Product', { min: 1, allowZero: false });
-    const product = db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-    if (!product || product.name === 'Wheat') throw new Error('Select a valid finished product');
+app.post('/api/consumption', (req,res)=>{
+  try{
+    const date=req.body.date||today();
+    const productId=asNumber(req.body.product_id,'Product',{min:1,allowZero:false});
+    const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
+    if(!product) throw new Error('Select a valid finished product');
+    const qty=normalizeBagKg(req.body,'Consumption');
+    if(qty.totalKg<=0) throw new Error('Enter consumption in 20 KG bags, 40 KG bags or loose KG');
+    const reason=requiredText(req.body.reason,'Reason');
+    if(!['Home','Company / Mill Use','Donation','Other'].includes(reason)) throw new Error('Select a valid consumption reason');
+    const stock=currentProductStock(productId);
+    if(qty.totalKg>stock+0.001) throw new Error(`${product.name} consumption (${qty.totalKg} KG) exceeds current stock (${stock} KG)`);
+    const remarks=String(req.body.remarks??'').trim();
 
-    const qtyKg = round2(asNumber(req.body.qty_kg, 'Quantity KG', { min: 0, allowZero: false }));
-    const reason = requiredText(req.body.reason, 'Reason');
-    if (!['Home', 'Company / Mill Use', 'Donation', 'Other'].includes(reason)) throw new Error('Select a valid consumption reason');
+    const id=db.transaction(()=>{
+      const r=db.prepare('INSERT INTO product_consumption (date,product_id,bags_20,bags_40,loose_kg,qty_kg,reason,remarks) VALUES (?,?,?,?,?,?,?,?)')
+        .run(date,productId,qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,reason,remarks);
+      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)`).run(date,productId,-qty.totalKg,'OUT','consumption',r.lastInsertRowid,`${reason}: ${remarks||'Non-sale consumption'}`);
+      return r.lastInsertRowid;
+    })();
 
-    const stock = currentProductStock(productId);
-    if (qtyKg > stock + 0.001) throw new Error(`${product.name} consumption (${qtyKg} KG) exceeds current stock (${stock} KG)`);
-
-    const remarks = String(req.body.remarks ?? '').trim();
-
-    const tx = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO product_consumption (date,product_id,qty_kg,reason,remarks)
-        VALUES (?,?,?,?,?)
-      `).run(date, productId, qtyKg, reason, remarks);
-
-      db.prepare(`
-        INSERT INTO stock_movements
-          (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
-        VALUES (?,?,?,?,?,?,?)
-      `).run(date, productId, -qtyKg, 'OUT', 'consumption', result.lastInsertRowid, `${reason}: ${remarks || 'Non-sale consumption'}`);
-
-      return result.lastInsertRowid;
-    });
-
-    const id = tx();
-    res.status(201).json({
-      id,
-      current_stock_kg: currentProductStock(productId),
-    });
-  } catch (e) {
-    res.status(400).json({ error: e.message });
-  }
+    res.status(201).json({id,current_stock_kg:currentProductStock(productId)});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.post('/api/consumption/:id/update', (req,res)=>{
@@ -1102,20 +1087,23 @@ app.post('/api/consumption/:id/update', (req,res)=>{
     if(!existing) return res.status(404).json({error:'Consumption record not found'});
     const date=req.body.date||existing.date;
     const productId=asNumber(req.body.product_id,'Product',{min:1,allowZero:false});
-    const product=db.prepare('SELECT * FROM products WHERE id=? AND is_active=1').get(productId);
-    if(!product||['Wheat','Bardana'].includes(product.name)) throw new Error('Select a valid finished product');
-    const qtyKg=round2(asNumber(req.body.qty_kg,'Quantity KG',{min:0,allowZero:false}));
+    const product=db.prepare("SELECT * FROM products WHERE id=? AND is_active=1 AND name NOT IN ('Wheat','Bardana')").get(productId);
+    if(!product) throw new Error('Select a valid finished product');
+    const qty=normalizeBagKg(req.body,'Consumption');
+    if(qty.totalKg<=0) throw new Error('Enter consumption in 20 KG bags, 40 KG bags or loose KG');
     const reason=requiredText(req.body.reason,'Reason');
-    if(!['Home','Company / Mill Use','Donation','Other'].includes(reason)) throw new Error('Select a valid consumption reason');
     const remarks=String(req.body.remarks??'').trim();
+
     db.transaction(()=>{
       db.prepare("DELETE FROM stock_movements WHERE reference_type='consumption' AND reference_id=?").run(id);
       const stock=currentProductStock(productId);
-      if(qtyKg>stock+0.001) throw new Error(`${product.name} consumption exceeds current stock`);
-      db.prepare('UPDATE product_consumption SET date=?,product_id=?,qty_kg=?,reason=?,remarks=? WHERE id=?').run(date,productId,qtyKg,reason,remarks,id);
-      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`)
-        .run(date,productId,-qtyKg,'OUT','consumption',id,`${reason}: ${remarks||'Non-sale consumption'}`);
+      if(qty.totalKg>stock+0.001) throw new Error(`${product.name} consumption exceeds current stock`);
+      db.prepare('UPDATE product_consumption SET date=?,product_id=?,bags_20=?,bags_40=?,loose_kg=?,qty_kg=?,reason=?,remarks=? WHERE id=?')
+        .run(date,productId,qty.bags20,qty.bags40,qty.looseKg,qty.totalKg,reason,remarks,id);
+      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)`).run(date,productId,-qty.totalKg,'OUT','consumption',id,`${reason}: ${remarks||'Non-sale consumption'}`);
     })();
+
     res.json({id,current_stock_kg:currentProductStock(productId)});
   }catch(e){res.status(400).json({error:e.message})}
 });
