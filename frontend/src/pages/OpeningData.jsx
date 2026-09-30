@@ -31,8 +31,8 @@ export default function OpeningData(){
         <form className="form-grid" onSubmit={e=>{e.preventDefault();save('/opening/product-stock',stock,()=>setStock({date:today(),product_id:'',bags_20:'',bags_40:'',loose_kg:''}),'Opening product stock saved.')}}>
           <label>Date (DD/MM/YYYY)<DateField required value={stock.date} onChange={date=>setStock({...stock,date})}/></label>
           <label>Product<select required value={stock.product_id} onChange={e=>setStock({...stock,product_id:e.target.value})}><option value="">Select product</option>{products.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-          <label>20 KG Bags<input type="number" min="0" step="1" value={stock.bags_20} onChange={e=>setStock({...stock,bags_20:e.target.value})}/></label>
-          <label>40 KG Bags<input type="number" min="0" step="1" value={stock.bags_40} onChange={e=>setStock({...stock,bags_40:e.target.value})}/></label>
+          <label>20 K Bags<input type="number" min="0" step="1" value={stock.bags_20} onChange={e=>setStock({...stock,bags_20:e.target.value})}/></label>
+          <label>40 K Bags<input type="number" min="0" step="1" value={stock.bags_40} onChange={e=>setStock({...stock,bags_40:e.target.value})}/></label>
           <label>Loose KG<input type="number" min="0" step="0.01" value={stock.loose_kg} onChange={e=>setStock({...stock,loose_kg:e.target.value})}/></label>
           <label>Total KG<input readOnly value={num(totalKg(stock))}/></label>
           <div className="span-2"><button className="primary">Save Opening Stock</button></div>
