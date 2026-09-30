@@ -29,9 +29,9 @@ export default function Production(){
   const submit=async e=>{
     e.preventDefault();setError('');setSuccess('');
     try{
-      await api.post(editingId?`/production/${editingId}/update`:'/production',form);
+      const result=await api.post(editingId?`/production/${editingId}/update`:'/production',form);
       const wasEdit=!!editingId;setEditingId(null);reset();
-      setSuccess(wasEdit?'Production record updated.':'Production record saved and stock updated.');
+      setSuccess(result?.warning || (wasEdit?'Production record updated.':'Production record saved and stock updated.'));
       setRows(await api.get('/production'));
     }catch(e){setError(e.message)}
   };
