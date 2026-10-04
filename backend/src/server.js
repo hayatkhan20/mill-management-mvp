@@ -302,7 +302,7 @@ app.get('/api/dashboard', (_req, res) => {
     };
   });
 
-  const wheatToday = db.prepare('SELECT COALESCE(SUM(total_kg),0) AS kg, COALESCE(SUM(bags),0) AS bags FROM wheat_in WHERE date = ?').get(date);
+  const wheatToday = db.prepare('SELECT COALESCE(SUM(total_kg),0) AS kg, COALESCE(SUM(bags),0) AS bags FROM wheat_receipts WHERE date = ?').get(date);
   const salesToday = db.prepare('SELECT COALESCE(SUM(total_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedOnSales = db.prepare('SELECT COALESCE(SUM(received_amount),0) AS amount FROM sales WHERE date = ?').get(date).amount;
   const receivedPayments = db.prepare('SELECT COALESCE(SUM(amount),0) AS amount FROM payments WHERE date = ?').get(date).amount;
@@ -533,6 +533,11 @@ app.get('/api/sources/:id', (req, res) => {
            ROUND(COALESCE(SUM(bags),0),2) AS bardana_with_wheat
     FROM wheat_in WHERE source_id=?
   `).get(id);
+  const wheatReceived = db.prepare(`
+    SELECT ROUND(COALESCE(SUM(total_kg),0),2) AS wheat_kg,
+           ROUND(COALESCE(SUM(bags),0),2) AS wheat_bags
+    FROM wheat_receipts WHERE source_id=?
+  `).get(id);
   const bardanaTotal = db.prepare(`
     SELECT ROUND(COALESCE(SUM(total_cost),0),2) AS total,
            ROUND(COALESCE(SUM(quantity),0),2) AS bags
@@ -576,8 +581,12 @@ app.get('/api/sources/:id', (req, res) => {
     total_purchased: round2(Number(wheatTotal.total) + Number(bardanaTotal.total)),
     total_paid: round2(paid),
     balance: sourceBalance(id),
-    wheat_kg: round2(wheatTotal.wheat_kg),
-    bardana_bags: round2(Number(wheatTotal.bardana_with_wheat) + Number(bardanaTotal.bags)),
+    wheat_purchased_kg: round2(wheatTotal.wheat_kg),
+    wheat_received_kg: round2(wheatReceived.wheat_kg),
+    wheat_received_bags: round2(wheatReceived.wheat_bags),
+    wheat_balance_kg: round2(Number(wheatTotal.wheat_kg) - Number(wheatReceived.wheat_kg)),
+    wheat_kg: round2(wheatReceived.wheat_kg),
+    bardana_bags: round2(Number(wheatReceived.wheat_bags) + Number(bardanaTotal.bags)),
     ledger,
   });
 });
@@ -616,16 +625,23 @@ app.get('/api/wheat-in', (req, res) => {
   const baseSql = `
     SELECT w.*, COALESCE(s.name,w.source_name) AS source_name,
            COALESCE(s.source_type,w.source_type) AS source_type,
-           ROUND(w.total_cost + COALESCE(w.bardana_cost,0),2) AS purchase_total
+           ROUND(w.total_cost + COALESCE(w.bardana_cost,0),2) AS purchase_total,
+           ROUND(COALESCE((SELECT SUM(r.total_kg) FROM wheat_receipts r WHERE r.purchase_id=w.id),0),2) AS received_kg,
+           ROUND(COALESCE((SELECT SUM(r.bags) FROM wheat_receipts r WHERE r.purchase_id=w.id),0),2) AS received_bags
     FROM wheat_in w
     LEFT JOIN sources s ON s.id=w.source_id
   `;
+  const finish = (rows) => rows.map(row => ({
+    ...row,
+    remaining_kg: round2(Math.max(0, Number(row.total_kg||0) - Number(row.received_kg||0))),
+    advance_wheat_kg: round2(Math.max(0, Number(row.received_kg||0) - Number(row.total_kg||0))),
+  }));
   if (date) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: 'Date must be YYYY-MM-DD' });
-    return res.json(db.prepare(`${baseSql} WHERE w.date=? ORDER BY w.id DESC`).all(date));
+    return res.json(finish(db.prepare(`${baseSql} WHERE w.date=? ORDER BY w.id DESC`).all(date)));
   }
   const limit = Math.min(Number(req.query.limit) || 100, 500);
-  res.json(db.prepare(`${baseSql} ORDER BY w.date DESC, w.id DESC LIMIT ?`).all(limit));
+  res.json(finish(db.prepare(`${baseSql} ORDER BY w.date DESC, w.id DESC LIMIT ?`).all(limit)));
 });
 
 app.post('/api/wheat-in', (req, res) => {
@@ -634,9 +650,10 @@ app.post('/api/wheat-in', (req, res) => {
     const sourceId = asNumber(req.body.source_id, 'Source', { min: 1, allowZero: false });
     const source = db.prepare('SELECT * FROM sources WHERE id=?').get(sourceId);
     if (!source) throw new Error('Source not found');
-    const bags = asNumber(req.body.bags ?? 0, 'Bags');
+
+    const bags = asNumber(req.body.bags ?? 0, 'Purchased bags');
     if (!Number.isInteger(bags)) throw new Error('Number of bags must be a whole number');
-    const totalKg = asNumber(req.body.total_kg, 'Total KG', { min: 0, allowZero: false });
+    const totalKg = asNumber(req.body.total_kg, 'Purchased wheat KG', { min: 0, allowZero: false });
     const rate = asNumber(req.body.rate_per_kg, 'Wheat rate per KG');
     const bardanaRate = asNumber(req.body.bardana_rate_per_bag ?? 0, 'Bardana rate per bag');
     const totalCost = round2(totalKg * rate);
@@ -644,30 +661,31 @@ app.post('/api/wheat-in', (req, res) => {
     const purchaseTotal = round2(totalCost + bardanaCost);
     const paidAmount = round2(asNumber(req.body.paid_amount ?? 0, 'Amount paid'));
     if (paidAmount > purchaseTotal + 0.001) throw new Error('Amount paid cannot exceed purchase total. Record extra as source advance payment.');
-    const wheat = getProduct('Wheat');
     const remarks = String(req.body.remarks ?? '').trim();
 
-    const tx = db.transaction(() => {
+    const id = db.transaction(() => {
       const result = db.prepare(`
         INSERT INTO wheat_in
           (date,source_id,source_type,source_name,bags,total_kg,rate_per_kg,total_cost,bardana_rate_per_bag,bardana_cost,paid_amount,remarks)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
       `).run(date, sourceId, source.source_type, source.name, bags, totalKg, rate, totalCost, bardanaRate, bardanaCost, paidAmount, remarks);
-      const id = result.lastInsertRowid;
-      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
-        VALUES (?,?,?,?,?,?,?)`).run(date, wheat.id, totalKg, 'IN', 'wheat_in', id, `Wheat received from ${source.name}`);
-      if (bags > 0) {
-        db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
-          VALUES (?,?,?,?,?,?)`).run(date, bags, 'IN', 'wheat_in', id, `Bardana received with wheat from ${source.name}`);
-      }
+      const purchaseId = result.lastInsertRowid;
+
       if (paidAmount > 0) {
         db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id)
-          VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${id}`,'wheat_in',id);
+          VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${purchaseId}`,'wheat_in',purchaseId);
       }
-      return id;
+      return purchaseId;
+    })();
+
+    res.status(201).json({
+      id,
+      wheat_cost: totalCost,
+      bardana_cost: bardanaCost,
+      total_purchase: purchaseTotal,
+      paid_amount: paidAmount,
+      source_balance: sourceBalance(sourceId),
     });
-    const id = tx();
-    res.status(201).json({ id, wheat_cost: totalCost, bardana_cost: bardanaCost, total_purchase: purchaseTotal, paid_amount: paidAmount, source_balance: sourceBalance(sourceId) });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -678,37 +696,158 @@ app.post('/api/wheat-in/:id/update', (req, res) => {
     const id = asNumber(req.params.id,'Purchase',{min:1,allowZero:false});
     const existing = db.prepare('SELECT * FROM wheat_in WHERE id=?').get(id);
     if (!existing) return res.status(404).json({error:'Wheat purchase not found'});
+
     const date=req.body.date||existing.date;
     const sourceId=asNumber(req.body.source_id,'Source',{min:1,allowZero:false});
     const source=db.prepare('SELECT * FROM sources WHERE id=?').get(sourceId);
     if(!source) throw new Error('Source not found');
-    const bags=asNumber(req.body.bags??0,'Bags'); if(!Number.isInteger(bags)) throw new Error('Number of bags must be a whole number');
-    const totalKg=asNumber(req.body.total_kg,'Total KG',{min:0,allowZero:false});
+
+    const bags=asNumber(req.body.bags??0,'Purchased bags');
+    if(!Number.isInteger(bags)) throw new Error('Number of bags must be a whole number');
+    const totalKg=asNumber(req.body.total_kg,'Purchased wheat KG',{min:0,allowZero:false});
+    const receivedKg=Number(db.prepare('SELECT COALESCE(SUM(total_kg),0) AS total FROM wheat_receipts WHERE purchase_id=?').get(id).total||0);
+    if(totalKg + 0.001 < receivedKg) throw new Error('Purchased KG cannot be less than wheat already received against this purchase.');
+
     const rate=asNumber(req.body.rate_per_kg,'Wheat rate per KG');
     const bardanaRate=asNumber(req.body.bardana_rate_per_bag??0,'Bardana rate per bag');
-    const totalCost=round2(totalKg*rate), bardanaCost=round2(bags*bardanaRate), purchaseTotal=round2(totalCost+bardanaCost);
+    const totalCost=round2(totalKg*rate);
+    const bardanaCost=round2(bags*bardanaRate);
+    const purchaseTotal=round2(totalCost+bardanaCost);
     const paidAmount=round2(asNumber(req.body.paid_amount??0,'Amount paid'));
     if(paidAmount>purchaseTotal+0.001) throw new Error('Amount paid cannot exceed purchase total.');
     const remarks=String(req.body.remarks??'').trim();
-    const wheat=getProduct('Wheat');
 
     db.transaction(()=>{
       db.prepare("DELETE FROM source_payments WHERE reference_type='wheat_in' AND reference_id=?").run(id);
-      db.prepare("DELETE FROM stock_movements WHERE reference_type='wheat_in' AND reference_id=?").run(id);
-      db.prepare("DELETE FROM bardana_movements WHERE reference_type='wheat_in' AND reference_id=?").run(id);
-      if(currentProductStock(wheat.id)+totalKg < -0.001) throw new Error('Cannot reduce this purchase below Wheat already used or sold later.');
-      if(bardanaStock().current+bags < -0.001) throw new Error('Cannot reduce Bardana below bags already used or sold later.');
-      db.prepare(`UPDATE wheat_in SET date=?,source_id=?,source_type=?,source_name=?,bags=?,total_kg=?,rate_per_kg=?,total_cost=?,bardana_rate_per_bag=?,bardana_cost=?,paid_amount=?,remarks=? WHERE id=?`)
-        .run(date,sourceId,source.source_type,source.name,bags,totalKg,rate,totalCost,bardanaRate,bardanaCost,paidAmount,remarks,id);
-      db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`)
-        .run(date,wheat.id,totalKg,'IN','wheat_in',id,`Wheat received from ${source.name}`);
-      if(bags>0) db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?)`)
-        .run(date,bags,'IN','wheat_in',id,`Bardana received with wheat from ${source.name}`);
-      if(paidAmount>0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id) VALUES (?,?,?,?,?,?)`)
-        .run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${id}`,'wheat_in',id);
+      db.prepare(`
+        UPDATE wheat_in
+        SET date=?,source_id=?,source_type=?,source_name=?,bags=?,total_kg=?,rate_per_kg=?,total_cost=?,bardana_rate_per_bag=?,bardana_cost=?,paid_amount=?,remarks=?
+        WHERE id=?
+      `).run(date,sourceId,source.source_type,source.name,bags,totalKg,rate,totalCost,bardanaRate,bardanaCost,paidAmount,remarks,id);
+
+      db.prepare('UPDATE wheat_receipts SET source_id=? WHERE purchase_id=?').run(sourceId,id);
+
+      if(paidAmount>0) {
+        db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id)
+          VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${id}`,'wheat_in',id);
+      }
     })();
+
     res.json({id,total_purchase:purchaseTotal,paid_amount:paidAmount,source_balance:sourceBalance(sourceId)});
   } catch(e){ res.status(400).json({error:e.message}); }
+});
+
+app.get('/api/wheat-receipts', (req,res)=>{
+  const date=String(req.query.date||'').trim();
+  const purchaseId=Number(req.query.purchase_id||0);
+  const sourceId=Number(req.query.source_id||0);
+
+  let sql=`
+    SELECT r.*,w.total_kg AS purchased_kg,w.bags AS purchased_bags,
+           COALESCE(s.name,w.source_name) AS source_name
+    FROM wheat_receipts r
+    JOIN wheat_in w ON w.id=r.purchase_id
+    LEFT JOIN sources s ON s.id=r.source_id
+    WHERE 1=1
+  `;
+  const params=[];
+  if(date){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({error:'Date must be YYYY-MM-DD'});
+    sql+=' AND r.date=?'; params.push(date);
+  }
+  if(purchaseId>0){ sql+=' AND r.purchase_id=?'; params.push(purchaseId); }
+  if(sourceId>0){ sql+=' AND r.source_id=?'; params.push(sourceId); }
+  sql+=' ORDER BY r.date DESC,r.id DESC';
+
+  const rows=db.prepare(sql).all(...params);
+  const runningByPurchase=new Map();
+  const ascending=[...rows].sort((a,b)=>String(a.date).localeCompare(String(b.date))||a.id-b.id);
+  for(const row of ascending){
+    const received=round2(Number(runningByPurchase.get(row.purchase_id)||0)+Number(row.total_kg||0));
+    runningByPurchase.set(row.purchase_id,received);
+    row.received_to_date_kg=received;
+    row.remaining_kg=round2(Math.max(0,Number(row.purchased_kg||0)-received));
+    row.advance_wheat_kg=round2(Math.max(0,received-Number(row.purchased_kg||0)));
+  }
+  res.json(ascending.reverse());
+});
+
+app.post('/api/wheat-receipts', (req,res)=>{
+  try{
+    const purchaseId=asNumber(req.body.purchase_id,'Wheat purchase',{min:1,allowZero:false});
+    const purchase=db.prepare('SELECT * FROM wheat_in WHERE id=?').get(purchaseId);
+    if(!purchase) throw new Error('Wheat purchase not found');
+
+    const date=req.body.date||today();
+    const bags=asNumber(req.body.bags??0,'Received bags');
+    if(!Number.isInteger(bags)) throw new Error('Received bags must be a whole number');
+    const totalKg=round2(asNumber(req.body.total_kg,'Received wheat KG',{min:0,allowZero:false}));
+    const carNo=String(req.body.car_no??'').trim();
+    const remarks=String(req.body.remarks??'').trim();
+    const wheat=getProduct('Wheat');
+
+    const id=db.transaction(()=>{
+      const r=db.prepare(`
+        INSERT INTO wheat_receipts (purchase_id,source_id,date,bags,total_kg,car_no,remarks)
+        VALUES (?,?,?,?,?,?,?)
+      `).run(purchaseId,purchase.source_id,date,bags,totalKg,carNo,remarks);
+      const receiptId=r.lastInsertRowid;
+
+      db.prepare(`INSERT INTO stock_movements
+        (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)`).run(date,wheat.id,totalKg,'IN','wheat_receipt',receiptId,
+          `Wheat received from ${purchase.source_name}${carNo?` • Car ${carNo}`:''}`);
+
+      if(bags>0){
+        db.prepare(`INSERT INTO bardana_movements
+          (date,qty_bags,movement_type,reference_type,reference_id,remarks)
+          VALUES (?,?,?,?,?,?)`).run(date,bags,'IN','wheat_receipt',receiptId,
+            `Bardana received with wheat from ${purchase.source_name}`);
+      }
+      return receiptId;
+    })();
+
+    const received=Number(db.prepare('SELECT COALESCE(SUM(total_kg),0) AS total FROM wheat_receipts WHERE purchase_id=?').get(purchaseId).total||0);
+    res.status(201).json({
+      id,
+      purchase_id:purchaseId,
+      received_to_date_kg:round2(received),
+      remaining_kg:round2(Math.max(0,Number(purchase.total_kg)-received)),
+      advance_wheat_kg:round2(Math.max(0,received-Number(purchase.total_kg))),
+    });
+  }catch(e){res.status(400).json({error:e.message})}
+});
+
+app.post('/api/wheat-receipts/:id/update', (req,res)=>{
+  try{
+    const id=asNumber(req.params.id,'Receipt',{min:1,allowZero:false});
+    const existing=db.prepare('SELECT * FROM wheat_receipts WHERE id=?').get(id);
+    if(!existing) return res.status(404).json({error:'Wheat receipt not found'});
+    const purchase=db.prepare('SELECT * FROM wheat_in WHERE id=?').get(existing.purchase_id);
+    const date=req.body.date||existing.date;
+    const bags=asNumber(req.body.bags??existing.bags,'Received bags');
+    if(!Number.isInteger(bags)) throw new Error('Received bags must be a whole number');
+    const totalKg=round2(asNumber(req.body.total_kg??existing.total_kg,'Received wheat KG',{min:0,allowZero:false}));
+    const carNo=String(req.body.car_no??existing.car_no??'').trim();
+    const remarks=String(req.body.remarks??existing.remarks??'').trim();
+    const wheat=getProduct('Wheat');
+
+    db.transaction(()=>{
+      db.prepare("DELETE FROM stock_movements WHERE reference_type='wheat_receipt' AND reference_id=?").run(id);
+      db.prepare("DELETE FROM bardana_movements WHERE reference_type='wheat_receipt' AND reference_id=?").run(id);
+      db.prepare('UPDATE wheat_receipts SET date=?,bags=?,total_kg=?,car_no=?,remarks=? WHERE id=?')
+        .run(date,bags,totalKg,carNo,remarks,id);
+      db.prepare(`INSERT INTO stock_movements
+        (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)`).run(date,wheat.id,totalKg,'IN','wheat_receipt',id,
+          `Wheat received from ${purchase.source_name}${carNo?` • Car ${carNo}`:''}`);
+      if(bags>0) db.prepare(`INSERT INTO bardana_movements
+        (date,qty_bags,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?)`).run(date,bags,'IN','wheat_receipt',id,
+          `Bardana received with wheat from ${purchase.source_name}`);
+    })();
+    res.json({id});
+  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.get('/api/bardana-purchases', (req, res) => {
