@@ -19,7 +19,7 @@ export default function WheatIn({showHistory=true,editRecord=null,onSaved}){
  const wheatCost=Number(form.total_kg||0)*Number(form.rate_per_kg||0);
  const bardanaCost=Number(form.bags||0)*Number(form.bardana_rate_per_bag||0);
  const total=wheatCost+bardanaCost;
- const submit=async e=>{e.preventDefault();setError('');setSuccess('');try{await api.post(editRecord?`/wheat-in/${editRecord.id}/update`:'/wheat-in',form);setForm(initial());setSuccess(editRecord?'Purchase updated.':'Wheat purchase saved.');await load();onSaved?.()}catch(e){setError(e.message)}};
+ const submit=async e=>{e.preventDefault();setError('');setSuccess('');try{await api.post(editRecord?`/wheat-in/${editRecord.id}/update`:'/wheat-in',form);setForm(initial());setSuccess(editRecord?'Purchase updated.':'Wheat purchase saved. Record physical delivery from Wheat Incoming.');await load();onSaved?.()}catch(e){setError(e.message)}};
  const addSource=async e=>{e.preventDefault();setError('');setSuccess('');try{const created=await api.post('/sources',newSource);const refreshed=await api.get('/sources');setSources(refreshed);setForm(prev=>({...prev,source_id:String(created.id)}));setNewSource(blankSource());setShowAddSource(false);setSuccess(`${created.name} added and selected.`)}catch(e){setError(e.message)}};
 
  return <>
@@ -33,8 +33,8 @@ export default function WheatIn({showHistory=true,editRecord=null,onSaved}){
       <button type="button" className="secondary add-customer-btn" onClick={()=>{setNewSource(blankSource());setShowAddSource(true)}}><UserPlus size={17}/> Add Source</button>
      </div>
     </label>
-    <label>{t('bags','Bags')} / {t('bardana','Bardana')}<input type="number" min="0" step="1" value={form.bags} onChange={e=>setForm({...form,bags:e.target.value})}/></label>
-    <label>{t('totalWheatKg','Total Wheat (KG)')}<input required type="number" min="0.01" step="0.01" value={form.total_kg} onChange={e=>setForm({...form,total_kg:e.target.value})}/></label>
+    <label>Purchased Bags / Bardana<input type="number" min="0" step="1" value={form.bags} onChange={e=>setForm({...form,bags:e.target.value})}/></label>
+    <label>Purchased Wheat (KG)<input required type="number" min="0.01" step="0.01" value={form.total_kg} onChange={e=>setForm({...form,total_kg:e.target.value})}/></label>
     <label>{t('wheatRateKg','Wheat Rate per KG')}<input required type="number" min="0" step="0.01" value={form.rate_per_kg} onChange={e=>setForm({...form,rate_per_kg:e.target.value})}/></label>
     <label>{t('wheatCost','Wheat Cost')}<input value={money(wheatCost)} disabled/></label>
     <label>{t('bardanaRateBag','Bardana Rate per Bag')}<input type="number" min="0" step="0.01" value={form.bardana_rate_per_bag} onChange={e=>setForm({...form,bardana_rate_per_bag:e.target.value})} placeholder="0 if included/free"/></label>
@@ -44,7 +44,7 @@ export default function WheatIn({showHistory=true,editRecord=null,onSaved}){
     <div className="span-2"><button className="primary">{editRecord?'Save Changes':t('saveWheatPurchase','Save Wheat Purchase')}</button></div>
    </form></Card>
 
-   {showHistory&&<Card className="section-card-below"><h3>Recent Wheat Purchases</h3>{rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Bags</th><th>Wheat KG</th><th>Wheat Cost</th><th>Bardana Cost</th><th>Total</th></tr></thead><tbody>
+   {showHistory&&<Card className="section-card-below"><h3>Recent Wheat Purchases</h3>{rows.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Source</th><th>Purchased Bags</th><th>Purchased KG</th><th>Wheat Cost</th><th>Bardana Cost</th><th>Total</th></tr></thead><tbody>
     {rows.slice(0,15).map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td><strong>{r.source_name}</strong><small>{r.source_type}</small></td><td>{num(r.bags)}</td><td>{num(r.total_kg)}</td><td>{money(r.total_cost)}</td><td>{money(r.bardana_cost)}</td><td><strong>{money(r.purchase_total)}</strong></td></tr>)}
    </tbody></table></div>:<Empty/>}</Card>}
   </div>
