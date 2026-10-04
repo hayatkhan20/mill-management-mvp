@@ -545,6 +545,15 @@ app.get('/api/sources/:id', (req, res) => {
   `).get(id);
   const paid = db.prepare('SELECT ROUND(COALESCE(SUM(amount),0),2) AS total FROM source_payments WHERE source_id=?').get(id).total;
 
+  const wheatReceipts = db.prepare(`
+    SELECT r.id,r.purchase_id,r.date,r.bags,r.total_kg,r.car_no,r.remarks,
+           w.total_kg AS purchased_kg
+    FROM wheat_receipts r
+    JOIN wheat_in w ON w.id=r.purchase_id
+    WHERE r.source_id=?
+    ORDER BY r.date DESC,r.id DESC
+  `).all(id);
+
   const events = db.prepare(`
     SELECT 'wheat' AS type, w.id, w.date, w.created_at, 'Wheat Purchase #' || w.id AS reference,
            (w.total_cost + COALESCE(w.bardana_cost,0)) AS debit, 0 AS credit,
@@ -587,6 +596,7 @@ app.get('/api/sources/:id', (req, res) => {
     wheat_balance_kg: round2(Number(wheatTotal.wheat_kg) - Number(wheatReceived.wheat_kg)),
     wheat_kg: round2(wheatReceived.wheat_kg),
     bardana_bags: round2(Number(wheatReceived.wheat_bags) + Number(bardanaTotal.bags)),
+    wheat_receipts: wheatReceipts,
     ledger,
   });
 });
