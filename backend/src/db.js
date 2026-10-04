@@ -15,6 +15,11 @@ db.exec('PRAGMA journal_mode = WAL;');
 db.exec('PRAGMA foreign_keys = ON;');
 
 db.exec(`
+CREATE TABLE IF NOT EXISTS app_meta (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS products (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -425,77 +430,84 @@ for (const row of db.prepare('SELECT id,source_name,source_type,source_id FROM w
 }
 
 // Existing versions treated every Wheat Purchase as if the full quantity arrived immediately.
-// Convert each old purchase into one receipt without changing its stock, Bardana or financial history.
-const findReceiptForPurchase = db.prepare('SELECT id FROM wheat_receipts WHERE purchase_id=? ORDER BY id LIMIT 1');
-const addLegacyReceipt = db.prepare(`
-  INSERT INTO wheat_receipts (purchase_id,source_id,date,bags,total_kg,car_no,remarks)
-  VALUES (?,?,?,?,?,?,?)
-`);
-const updateLegacyWheatMovement = db.prepare(`
-  UPDATE stock_movements
-  SET reference_type='wheat_receipt', reference_id=?, remarks=?
-  WHERE reference_type='wheat_in' AND reference_id=?
-`);
-const updateLegacyBardanaMovement = db.prepare(`
-  UPDATE bardana_movements
-  SET reference_type='wheat_receipt', reference_id=?, remarks=?
-  WHERE reference_type='wheat_in' AND reference_id=?
-`);
-
-const wheatProduct = db.prepare("SELECT id FROM products WHERE name='Wheat'").get();
-for (const row of db.prepare('SELECT id,date,source_id,source_name,bags,total_kg FROM wheat_in ORDER BY id').all()) {
-  if (!row.source_id || findReceiptForPurchase.get(row.id)) continue;
-
-  const receiptId = addLegacyReceipt.run(
-    row.id,
-    row.source_id,
-    row.date,
-    Number(row.bags || 0),
-    Number(row.total_kg || 0),
-    '',
-    'Migrated from existing Wheat Purchase',
-  ).lastInsertRowid;
-
-  const wheatMove = updateLegacyWheatMovement.run(
-    receiptId,
-    `Wheat received from ${row.source_name}`,
-    row.id,
-  );
-  if (wheatMove.changes === 0 && wheatProduct && Number(row.total_kg || 0) > 0) {
-    db.prepare(`
-      INSERT INTO stock_movements
-        (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
-      VALUES (?,?,?,?,?,?,?)
-    `).run(
-      row.date,
-      wheatProduct.id,
-      Number(row.total_kg || 0),
-      'IN',
-      'wheat_receipt',
-      receiptId,
-      `Wheat received from ${row.source_name}`,
-    );
-  }
-
-  const bardanaMove = updateLegacyBardanaMovement.run(
-    receiptId,
-    `Bardana received with wheat from ${row.source_name}`,
-    row.id,
-  );
-  if (bardanaMove.changes === 0 && Number(row.bags || 0) > 0) {
-    db.prepare(`
-      INSERT INTO bardana_movements
-        (date,qty_bags,movement_type,reference_type,reference_id,remarks)
-      VALUES (?,?,?,?,?,?)
-    `).run(
+// Run this conversion exactly once. Future purchases must wait for explicit Wheat Incoming entries.
+const wheatReceiptMigrationDone = db.prepare("SELECT value FROM app_meta WHERE key='wheat_receipts_v1'").get();
+if (!wheatReceiptMigrationDone) {
+  // Convert each old purchase into one receipt without changing its stock, Bardana or financial history.
+  const findReceiptForPurchase = db.prepare('SELECT id FROM wheat_receipts WHERE purchase_id=? ORDER BY id LIMIT 1');
+  const addLegacyReceipt = db.prepare(`
+    INSERT INTO wheat_receipts (purchase_id,source_id,date,bags,total_kg,car_no,remarks)
+    VALUES (?,?,?,?,?,?,?)
+  `);
+  const updateLegacyWheatMovement = db.prepare(`
+    UPDATE stock_movements
+    SET reference_type='wheat_receipt', reference_id=?, remarks=?
+    WHERE reference_type='wheat_in' AND reference_id=?
+  `);
+  const updateLegacyBardanaMovement = db.prepare(`
+    UPDATE bardana_movements
+    SET reference_type='wheat_receipt', reference_id=?, remarks=?
+    WHERE reference_type='wheat_in' AND reference_id=?
+  `);
+  
+  const wheatProduct = db.prepare("SELECT id FROM products WHERE name='Wheat'").get();
+  for (const row of db.prepare('SELECT id,date,source_id,source_name,bags,total_kg FROM wheat_in ORDER BY id').all()) {
+    if (!row.source_id || findReceiptForPurchase.get(row.id)) continue;
+  
+    const receiptId = addLegacyReceipt.run(
+      row.id,
+      row.source_id,
       row.date,
       Number(row.bags || 0),
-      'IN',
-      'wheat_receipt',
+      Number(row.total_kg || 0),
+      '',
+      'Migrated from existing Wheat Purchase',
+    ).lastInsertRowid;
+  
+    const wheatMove = updateLegacyWheatMovement.run(
+      receiptId,
+      `Wheat received from ${row.source_name}`,
+      row.id,
+    );
+    if (wheatMove.changes === 0 && wheatProduct && Number(row.total_kg || 0) > 0) {
+      db.prepare(`
+        INSERT INTO stock_movements
+          (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?,?)
+      `).run(
+        row.date,
+        wheatProduct.id,
+        Number(row.total_kg || 0),
+        'IN',
+        'wheat_receipt',
+        receiptId,
+        `Wheat received from ${row.source_name}`,
+      );
+    }
+  
+    const bardanaMove = updateLegacyBardanaMovement.run(
       receiptId,
       `Bardana received with wheat from ${row.source_name}`,
+      row.id,
     );
+    if (bardanaMove.changes === 0 && Number(row.bags || 0) > 0) {
+      db.prepare(`
+        INSERT INTO bardana_movements
+          (date,qty_bags,movement_type,reference_type,reference_id,remarks)
+        VALUES (?,?,?,?,?,?)
+      `).run(
+        row.date,
+        Number(row.bags || 0),
+        'IN',
+        'wheat_receipt',
+        receiptId,
+        `Bardana received with wheat from ${row.source_name}`,
+      );
+    }
   }
+  
+  
+  db.prepare("INSERT OR REPLACE INTO app_meta (key,value) VALUES ('wheat_receipts_v1',CURRENT_TIMESTAMP)").run();
 }
 
 // Any very old purchase that still has no receipt remains untouched here;
