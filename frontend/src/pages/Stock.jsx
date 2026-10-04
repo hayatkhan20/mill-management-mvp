@@ -57,12 +57,25 @@ export default function Stock(){
 
   <Card className="section-card-below">
     <div className="section-title"><h3>Monthly Product Record</h3><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>
-    <div className="table-wrap"><table><thead><tr><th>Product</th><th>Opening</th><th>In / Production</th><th>Out</th><th>Closing</th></tr></thead><tbody>{finishedMonthly.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td><td>{num(r.opening)} KG</td><td>{num(r.in_qty)} KG</td><td>{num(r.out_qty)} KG</td><td><strong>{num(r.closing)} KG</strong></td></tr>)}</tbody></table></div>
+    <div className="table-wrap"><table><thead><tr><th>Product</th><th>Opening</th><th>In / Production</th><th>Out</th><th>Closing</th></tr></thead><tbody>{finishedMonthly.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td>{r.name==='Waste'?<>
+      <td>{num(r.opening)} KG</td><td>{num(r.in_qty)} KG</td><td>{num(r.out_qty)} KG</td><td><strong>{num(r.closing)} KG</strong></td>
+    </>:<>
+      <td>{r.opening_bags_known?<BagQuantity bags20={r.opening_bags_20} bags40={r.opening_bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
+      <td><BagQuantity bags20={r.in_bags_20} bags40={r.in_bags_40}/></td>
+      <td><BagQuantity bags20={r.out_bags_20} bags40={r.out_bags_40}/></td>
+      <td><BagQuantity bags20={r.closing_bags_20} bags40={r.closing_bags_40}/></td>
+    </>}</tr>)}</tbody></table></div>
   </Card>
 
   <Card className="section-card-below">
     <h3>Overall Product Record</h3>
-    <div className="table-wrap"><table><thead><tr><th>Product</th><th>Total In</th><th>Total Out</th><th>Current</th></tr></thead><tbody>{finishedOverall.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td><td>{num(r.total_in)} KG</td><td>{num(r.total_out)} KG</td><td><strong>{num(r.current)} KG</strong></td></tr>)}</tbody></table></div>
+    <div className="table-wrap"><table><thead><tr><th>Product</th><th>Total In</th><th>Total Out</th><th>Current</th></tr></thead><tbody>{finishedOverall.map(r=><tr key={r.id}><td><strong>{r.name}</strong></td>{r.name==='Waste'?<>
+      <td>{num(r.total_in)} KG</td><td>{num(r.total_out)} KG</td><td><strong>{num(r.current)} KG</strong></td>
+    </>:<>
+      <td><BagQuantity bags20={r.total_in_bags_20} bags40={r.total_in_bags_40}/></td>
+      <td><BagQuantity bags20={r.total_out_bags_20} bags40={r.total_out_bags_40}/></td>
+      <td>{r.current_bags_known?<BagQuantity bags20={r.current_bags_20} bags40={r.current_bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
+    </>}</tr>)}</tbody></table></div>
   </Card>
 
   <Card className="section-card-below">
