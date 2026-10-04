@@ -75,6 +75,11 @@ export default function Sources(){
     <span>Bardana received: <strong>{num(selected.bardana_bags)} Bags</strong></span>
    </div>
 
+   <Card><h3>Wheat Incoming</h3>{selected.wheat_receipts?.length?<div className="table-wrap"><table>
+    <thead><tr><th>Date</th><th>Purchase</th><th>Bags</th><th>KG</th><th>Car No.</th></tr></thead>
+    <tbody>{selected.wheat_receipts.map(r=><tr key={r.id}><td>{formatDateDMY(r.date)}</td><td>#{r.purchase_id}</td><td>{num(r.bags)}</td><td>{num(r.total_kg)} KG</td><td>{r.car_no||'—'}</td></tr>)}</tbody>
+   </table></div>:<Empty/>}</Card>
+
    <Card className="no-print"><h3>{editingPaymentId?'Edit Source Payment':'Pay Source'}</h3><form className="form-inline" onSubmit={pay}>
     <DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/>
     <input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/>
