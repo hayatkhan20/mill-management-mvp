@@ -112,8 +112,7 @@ export default function Production(){
                   <th>Previous Stock</th>
                   <th>20 K Bags</th>
                   <th>40 K Bags</th>
-                  <th>Loose KG</th>
-                  <th>Total Stock</th>
+                  <th>Stock</th>
                   <th>Calculated Production</th>
                 </tr>
               </thead>
@@ -125,13 +124,22 @@ export default function Production(){
                   return <tr key={product.id}>
                     <td><strong>{product.name}</strong></td>
                     <td>
-                      {d?.previous_breakdown_known?<><BagQuantity bags20={d?.previous_bags_20||0} bags40={d?.previous_bags_40||0}/><small className="record-kg">{num(d?.opening||0)} KG{Number(d?.previous_loose_kg||0)>0?` • ${num(d.previous_loose_kg)} loose KG`:''}</small></>:<><strong>{num(d?.opening||0)} KG</strong><small>Bag breakdown not recorded</small></>}
+                      {product.name==='Waste'
+                        ? <strong>{num(d?.opening||0)} KG</strong>
+                        : d?.previous_breakdown_known
+                          ? <BagQuantity bags20={d?.previous_bags_20||0} bags40={d?.previous_bags_40||0}/>
+                          : <small>Bag breakdown not recorded</small>}
                     </td>
-                    <td><input type="number" min="0" step="1" value={item.bags_20} onChange={e=>update(product.id,'bags_20',e.target.value)}/></td>
-                    <td><input type="number" min="0" step="1" value={item.bags_40} onChange={e=>update(product.id,'bags_40',e.target.value)}/></td>
-                    <td><input type="number" min="0" step="0.01" value={item.loose_kg} onChange={e=>update(product.id,'loose_kg',e.target.value)}/></td>
-                    <td><BagQuantity bags20={item.bags_20||0} bags40={item.bags_40||0}/><small className="record-kg">{num(totalKg(item))} KG{Number(item.loose_kg||0)>0?` • ${num(item.loose_kg)} loose KG`:''}</small></td>
-                    <td>{produced===null?'—':<><BagQuantity bags20={produced.bags20} bags40={produced.bags40}/><small className="record-kg">{num(produced.total)} KG{Number(produced.loose)>0?` • ${num(produced.loose)} loose KG`:''}</small></>}</td>
+                    {product.name==='Waste'?<>
+                      <td colSpan="2">—</td>
+                      <td><input type="number" min="0" step="0.01" placeholder="KG" value={item.loose_kg} onChange={e=>update(product.id,'loose_kg',e.target.value)}/></td>
+                      <td>{produced===null?'—':<strong>{num(produced.loose)} KG</strong>}</td>
+                    </>:<>
+                      <td><input type="number" min="0" step="1" value={item.bags_20} onChange={e=>update(product.id,'bags_20',e.target.value)}/></td>
+                      <td><input type="number" min="0" step="1" value={item.bags_40} onChange={e=>update(product.id,'bags_40',e.target.value)}/></td>
+                      <td><BagQuantity bags20={item.bags_20||0} bags40={item.bags_40||0}/></td>
+                      <td>{produced===null?'—':<BagQuantity bags20={produced.bags20} bags40={produced.bags40}/>}</td>
+                    </>}
                   </tr>;
                 })}
               </tbody>
@@ -157,8 +165,8 @@ export default function Production(){
           {rows.slice(0,20).map(r=><tr key={r.id}>
             <td>{formatDateDMY(r.date)}</td>
             <td>{num(r.wheat_consumed)} KG</td>
-            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <BagQuantity bags20={i.bags_20||0} bags40={i.bags_40||0}/><small className="record-kg">{num(i.qty_kg)} KG{Number(i.loose_kg||0)>0?` • ${num(i.loose_kg)} loose KG`:''}</small></div>):'—'}</td>
-            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: <BagQuantity bags20={i.stock_bags_20} bags40={i.stock_bags_40}/><small className="record-kg">{num(i.physical_stock_kg)} KG{Number(i.stock_loose_kg)>0?` • ${num(i.stock_loose_kg)} loose KG`:''}</small></div>):'—'}</td>
+            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: {i.product_name==='Waste'?<strong>{num(i.qty_kg)} KG</strong>:<BagQuantity bags20={i.bags_20||0} bags40={i.bags_40||0}/>}</div>):'—'}</td>
+            <td>{r.items?.length?r.items.map(i=><div key={i.id}>{i.product_name}: {i.product_name==='Waste'?<strong>{num(i.physical_stock_kg)} KG</strong>:<BagQuantity bags20={i.stock_bags_20} bags40={i.stock_bags_40}/>}</div>):'—'}</td>
           </tr>)}
         </tbody>
       </table></div>:<Empty/>}
