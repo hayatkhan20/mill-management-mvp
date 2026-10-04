@@ -842,6 +842,11 @@ app.post('/api/wheat-receipts/:id/update', (req,res)=>{
     const remarks=String(req.body.remarks??existing.remarks??'').trim();
     const wheat=getProduct('Wheat');
 
+    const projectedWheat=round2(currentProductStock(wheat.id)-Number(existing.total_kg||0)+totalKg);
+    if(projectedWheat < -0.001) throw new Error('Cannot reduce this receipt below wheat already used or sold later.');
+    const projectedBardana=round2(bardanaStock().current-Number(existing.bags||0)+bags);
+    if(projectedBardana < -0.001) throw new Error('Cannot reduce this receipt below Bardana already used or sold later.');
+
     db.transaction(()=>{
       db.prepare("DELETE FROM stock_movements WHERE reference_type='wheat_receipt' AND reference_id=?").run(id);
       db.prepare("DELETE FROM bardana_movements WHERE reference_type='wheat_receipt' AND reference_id=?").run(id);
