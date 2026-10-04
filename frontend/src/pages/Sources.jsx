@@ -68,7 +68,12 @@ export default function Sources(){
     <Card><div className="stat-label">Total Paid</div><div className="stat-value">{money(selected.total_paid)}</div></Card>
     <Card><div className="stat-label">Current Balance</div><div className="stat-value">{balanceLabel(selected.balance)}</div></Card>
    </div>
-   <div className="quantities"><span>Wheat: <strong>{num(selected.wheat_kg)} KG</strong></span><span>Bardana received: <strong>{num(selected.bardana_bags)} Bags</strong></span></div>
+   <div className="quantities">
+    <span>Wheat Purchased: <strong>{num(selected.wheat_purchased_kg)} KG</strong></span>
+    <span>Wheat Received: <strong>{num(selected.wheat_received_kg)} KG / {num(selected.wheat_received_bags)} Bags</strong></span>
+    <span>{Number(selected.wheat_balance_kg)>=0?'Wheat Remaining':'Advance Wheat'}: <strong>{num(Math.abs(Number(selected.wheat_balance_kg||0)))} KG</strong></span>
+    <span>Bardana received: <strong>{num(selected.bardana_bags)} Bags</strong></span>
+   </div>
 
    <Card className="no-print"><h3>{editingPaymentId?'Edit Source Payment':'Pay Source'}</h3><form className="form-inline" onSubmit={pay}>
     <DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/>
