@@ -1651,10 +1651,21 @@ app.get('/api/stock/daily', (req,res)=>{
 
       closing:physical?round2(physical.total_kg):ledgerClosing,
       physical_counted:!!physical,
-      bag_breakdown_known:!!physical,
-      bags_20:round2(physical?.bags_20||0),
-      bags_40:round2(physical?.bags_40||0),
-      loose_kg:round2(physical?.loose_kg||0),
+      bag_breakdown_known:!!physical || (
+        previousKnown &&
+        Math.abs(Number(production.loose_kg||0))<=0.001 &&
+        Math.abs(Number(saleBreakdown.loose_kg||0))<=0.001 &&
+        Math.abs(Number(consumptionBreakdown.loose_kg||0))<=0.001
+      ),
+      bags_20:round2(physical?.bags_20 ?? Math.max(0,
+        Number(previous.bags_20||0)+Number(production.bags_20||0)-Number(saleBreakdown.bags_20||0)-Number(consumptionBreakdown.bags_20||0)
+      )),
+      bags_40:round2(physical?.bags_40 ?? Math.max(0,
+        Number(previous.bags_40||0)+Number(production.bags_40||0)-Number(saleBreakdown.bags_40||0)-Number(consumptionBreakdown.bags_40||0)
+      )),
+      loose_kg:round2(physical?.loose_kg ?? Math.max(0,
+        Number(previous.loose_kg||0)+Number(production.loose_kg||0)-Number(saleBreakdown.loose_kg||0)-Number(consumptionBreakdown.loose_kg||0)
+      )),
     };
   });
 
