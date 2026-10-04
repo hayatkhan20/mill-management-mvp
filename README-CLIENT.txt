@@ -27,6 +27,59 @@ Setup creates:
 Do not run the software directly from inside the ZIP.
 
 
+
+UPDATING AN EXISTING CLIENT INSTALLATION
+----------------------------------------
+If the mill is already using the software and has real data:
+
+1. Do NOT delete the existing Mill Manager folder.
+2. Do NOT run a clean-install ZIP over the existing data.
+3. Extract the developer-provided Mill-Management-Update ZIP into the
+   existing Mill Manager folder.
+4. Double-click:
+      Apply Mill Manager Update.bat
+5. The updater automatically:
+   - creates a database backup,
+   - stops the old server,
+   - updates application files,
+   - keeps the existing mill.db,
+   - keeps license.json,
+   - keeps the backups folder,
+   - restarts Mill Manager.
+
+The database is migrated automatically when the updated server starts.
+
+
+WHEAT PURCHASE AND WHEAT INCOMING
+---------------------------------
+Wheat Purchase and physical Wheat Incoming are separate records.
+
+Wheat Purchase records:
+- Source
+- Purchased bags
+- Purchased KG
+- Rate / cost
+- Amount paid
+
+Physical wheat stock increases only when Wheat Incoming is recorded.
+
+One purchase can have multiple incoming deliveries. Each delivery records:
+- Date
+- Bags
+- KG
+- Car number
+- Remarks
+
+The software tracks:
+- Purchased wheat
+- Wheat received
+- Wheat remaining to receive
+- Advance wheat received
+
+Older Wheat Purchase records are automatically converted into one completed
+incoming receipt during the update so existing stock is not lost or doubled.
+
+
 DAILY USE
 ---------
 Normally, simply double-click:
