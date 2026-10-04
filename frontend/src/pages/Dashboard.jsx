@@ -3,7 +3,6 @@ import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader } from '../components/Common';
 import { money, num } from '../utils';
 import { useUiPreferences } from '../context/UiPreferences';
-import BagQuantity from '../components/BagQuantity';
 
 export default function Dashboard() {
   const {t}=useUiPreferences();
@@ -25,7 +24,13 @@ export default function Dashboard() {
     <PageHeader title={t('todayAtGlance','Today at a glance')} text={`${t('date','Date')}: ${data.date}`} />
     <div className="stats-grid">{stats.map(([k,v,sub]) => <Card key={k}><div className="stat-label">{k}</div><div className="stat-value">{v}</div>{sub&&<div className="record-kg">{sub}</div>}</Card>)}</div>
     <div className="two-col dashboard-grid">
-      <Card><h3>{t('currentFinishedStock','Current Finished Product Stock')}</h3>{finished.length?<div className="table-wrap"><table><thead><tr><th>{t('product','Product')}</th><th>{t('stockLabel','Stock')}</th></tr></thead><tbody>{finished.map(r=><tr key={r.id}><td>{r.name}</td><td>{r.name==='Waste'?<strong>{num(r.stock_kg)} KG</strong>:r.bag_breakdown_known?<BagQuantity bags20={r.bags_20} bags40={r.bags_40}/>:<small>Bag breakdown not recorded yet</small>}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
+      <Card><h3>{t('currentFinishedStock','Current Finished Product Stock')}</h3>{finished.length?<div className="table-wrap"><table><thead><tr><th>{t('product','Product')}</th><th>Size</th><th>{t('stockLabel','Stock')}</th></tr></thead><tbody>{finished.flatMap(r=>{
+        if(r.name==='Waste') return [<tr key={r.id}><td><strong>{r.name}</strong></td><td>KG</td><td><strong>{num(r.stock_kg)} KG</strong></td></tr>];
+        return [
+          <tr key={`${r.id}-20`}><td><strong>{r.name}</strong></td><td><strong>20K</strong></td><td>{r.bag_breakdown_known?<strong>{num(r.bags_20)} Bags</strong>:<span>—</span>}</td></tr>,
+          <tr key={`${r.id}-40`}><td></td><td><strong>40K</strong></td><td>{r.bag_breakdown_known?<strong>{num(r.bags_40)} Bags</strong>:<span>—</span>}</td></tr>
+        ];
+      })}</tbody></table></div>:<Empty/>}</Card>
       <Card><div className="section-title"><h3>{t('recentSales','Recent Sales')}</h3></div>{data.recent_sales.length ? <div className="table-wrap"><table><thead><tr><th>{t('billNo','Bill')}</th><th>{t('date','Date')}</th><th>{t('customer','Customer')}</th><th>{t('total','Total')}</th><th>{t('pending','Pending')}</th></tr></thead><tbody>{data.recent_sales.map(r => <tr key={r.id}><td>{r.bill_no}</td><td>{r.date}</td><td>{r.customer_name}</td><td>{money(r.total_amount)}</td><td>{money(r.pending_amount)}</td></tr>)}</tbody></table></div> : <Empty/>}</Card>
     </div>
   </>;
