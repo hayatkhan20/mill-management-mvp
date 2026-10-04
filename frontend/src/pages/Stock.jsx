@@ -28,29 +28,41 @@ export default function Stock(){
 
   <Card>
     <div className="section-title"><h3>Daily Stock Record</h3><DateField value={date} onChange={setDate}/></div>
-    <div className="table-wrap"><table><thead><tr><th>Product</th><th>Previous Stock</th><th>Production</th><th>Total</th><th>Sales</th><th>Other Out</th><th>Current Remaining</th></tr></thead><tbody>
-      {finishedDaily.map(r=><tr key={r.id}>
-        <td><strong>{r.name}</strong></td>
-        {r.name==='Waste'?<>
-          <td><strong>{num(r.opening)} KG</strong></td>
-          <td><strong>{num(r.production)} KG</strong></td>
-          <td><strong>{num(r.total_available)} KG</strong></td>
-          <td><strong>{num(r.sales)} KG</strong></td>
-          <td><strong>{num(r.consumption)} KG</strong></td>
+    <div className="table-wrap"><table><thead><tr><th>Product</th><th>Size</th><th>Previous</th><th>Production</th><th>Total</th><th>Sale</th><th>Other Out</th><th>Remaining</th></tr></thead><tbody>
+      {finishedDaily.flatMap(r=>{
+        if(r.name==='Waste') return [<tr key={r.id}>
+          <td><strong>{r.name}</strong></td>
+          <td>KG</td>
+          <td>{num(r.opening)} KG</td>
+          <td>{num(r.production)} KG</td>
+          <td>{num(r.total_available)} KG</td>
+          <td>{num(r.sales)} KG</td>
+          <td>{num(r.consumption)} KG</td>
           <td><strong>{num(r.closing)} KG</strong></td>
-        </>:<>
-          <td>{r.previous_breakdown_known?<BagQuantity bags20={r.previous_bags_20} bags40={r.previous_bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
-          <td>{r.production_breakdown_known?<BagQuantity bags20={r.production_bags_20} bags40={r.production_bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
-          <td><BagQuantity bags20={r.total_bags_20} bags40={r.total_bags_40}/></td>
-          <td><BagQuantity bags20={r.sales_bags_20} bags40={r.sales_bags_40}/></td>
-          <td><BagQuantity bags20={r.consumption_bags_20} bags40={r.consumption_bags_40}/></td>
-          <td>{r.bag_breakdown_known?<BagQuantity bags20={r.bags_20} bags40={r.bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
-        </>}
-      </tr>)}
+        </tr>];
+
+        const rowFor=(size,key,previous,production,total,sales,other,remaining,showName)=>(
+          <tr key={`${r.id}-${key}`}>
+            <td>{showName?<strong>{r.name}</strong>:''}</td>
+            <td><strong>{size}</strong></td>
+            <td>{r.previous_breakdown_known?`${num(previous)} Bags`:'—'}</td>
+            <td>{r.production_breakdown_known?`${num(production)} Bags`:'—'}</td>
+            <td>{`${num(total)} Bags`}</td>
+            <td>{`${num(sales)} Bags`}</td>
+            <td>{`${num(other)} Bags`}</td>
+            <td>{r.bag_breakdown_known?<strong>{num(remaining)} Bags</strong>:'—'}</td>
+          </tr>
+        );
+
+        return [
+          rowFor('20K','20',r.previous_bags_20,r.production_bags_20,r.total_bags_20,r.sales_bags_20,r.consumption_bags_20,r.bags_20,true),
+          rowFor('40K','40',r.previous_bags_40,r.production_bags_40,r.total_bags_40,r.sales_bags_40,r.consumption_bags_40,r.bags_40,false),
+        ];
+      })}
     </tbody></table></div>
   </Card>
 
-  <Card className="section-card-below">
+    <Card className="section-card-below">
     <div className="section-title"><h3>Monthly Wheat Record</h3><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>
     <div className="table-wrap"><table><thead><tr><th>Opening Wheat</th><th>Total Wheat In</th><th>Used / Ground</th><th>Closing Wheat</th></tr></thead><tbody><tr><td>{num(wheat?.opening)} KG</td><td>{num(wheat?.in_qty)} KG</td><td>{num(wheat?.out_qty)} KG</td><td><strong>{num(wheat?.closing)} KG</strong></td></tr></tbody></table></div>
   </Card>
