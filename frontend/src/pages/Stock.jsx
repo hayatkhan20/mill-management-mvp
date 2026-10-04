@@ -31,12 +31,21 @@ export default function Stock(){
     <div className="table-wrap"><table><thead><tr><th>Product</th><th>Previous Stock</th><th>Production</th><th>Total</th><th>Sales</th><th>Other Out</th><th>Current Remaining</th></tr></thead><tbody>
       {finishedDaily.map(r=><tr key={r.id}>
         <td><strong>{r.name}</strong></td>
-        <td>{r.previous_breakdown_known?<><BagQuantity bags20={r.previous_bags_20} bags40={r.previous_bags_40}/><small className="record-kg">{num(r.opening)} KG{Number(r.previous_loose_kg)>0?` • ${num(r.previous_loose_kg)} loose KG`:''}</small></>:<><strong>{num(r.opening)} KG</strong><small>Bag breakdown not recorded</small></>}</td>
-        <td>{r.production_breakdown_known?<><BagQuantity bags20={r.production_bags_20} bags40={r.production_bags_40}/><small className="record-kg">{num(r.production)} KG{Number(r.production_loose_kg)>0?` • ${num(r.production_loose_kg)} loose KG`:''}</small></>:<><strong>{num(r.production)} KG</strong><small>Calculated production</small></>}</td>
-        <td><BagQuantity bags20={r.total_bags_20} bags40={r.total_bags_40}/><small className="record-kg">{num(r.total_available)} KG{Number(r.total_loose_kg)>0?` • ${num(r.total_loose_kg)} loose KG`:''}</small></td>
-        <td><BagQuantity bags20={r.sales_bags_20} bags40={r.sales_bags_40}/><small className="record-kg">{num(r.sales)} KG{Number(r.sales_loose_kg)>0?` • ${num(r.sales_loose_kg)} loose KG`:''}</small></td>
-        <td><BagQuantity bags20={r.consumption_bags_20} bags40={r.consumption_bags_40}/><small className="record-kg">{num(r.consumption)} KG{Number(r.consumption_loose_kg)>0?` • ${num(r.consumption_loose_kg)} loose KG`:''}</small></td>
-        <td>{r.bag_breakdown_known?<><BagQuantity bags20={r.bags_20} bags40={r.bags_40}/><small className="record-kg">{num(r.closing)} KG{Number(r.loose_kg)>0?` • ${num(r.loose_kg)} loose KG`:''}</small></>:<><strong>{num(r.closing)} KG</strong><small>Bag breakdown not recorded</small></>}</td>
+        {r.name==='Waste'?<>
+          <td><strong>{num(r.opening)} KG</strong></td>
+          <td><strong>{num(r.production)} KG</strong></td>
+          <td><strong>{num(r.total_available)} KG</strong></td>
+          <td><strong>{num(r.sales)} KG</strong></td>
+          <td><strong>{num(r.consumption)} KG</strong></td>
+          <td><strong>{num(r.closing)} KG</strong></td>
+        </>:<>
+          <td>{r.previous_breakdown_known?<BagQuantity bags20={r.previous_bags_20} bags40={r.previous_bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
+          <td>{r.production_breakdown_known?<BagQuantity bags20={r.production_bags_20} bags40={r.production_bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
+          <td><BagQuantity bags20={r.total_bags_20} bags40={r.total_bags_40}/></td>
+          <td><BagQuantity bags20={r.sales_bags_20} bags40={r.sales_bags_40}/></td>
+          <td><BagQuantity bags20={r.consumption_bags_20} bags40={r.consumption_bags_40}/></td>
+          <td>{r.bag_breakdown_known?<BagQuantity bags20={r.bags_20} bags40={r.bags_40}/>:<small>Bag breakdown not recorded</small>}</td>
+        </>}
       </tr>)}
     </tbody></table></div>
   </Card>
