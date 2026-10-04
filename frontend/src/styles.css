@@ -245,3 +245,9 @@
 .record-kg{display:block;font-size:11px;color:#7c8b83;margin-top:4px;font-weight:500}
 :root[data-theme="dark"] .bag-separator{color:#9fb0a7}
 :root[data-theme="dark"] .record-kg{color:#9fb0a7}
+
+
+/* Appendix: finished-product records are bag based */
+.appendix-stats{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:1100px){.appendix-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.appendix-stats{grid-template-columns:1fr}}
