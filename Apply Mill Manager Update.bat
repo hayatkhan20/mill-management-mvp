@@ -12,20 +12,20 @@ echo ==========================================
 echo.
 echo Finding the existing Mill Manager installation...
 
-for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell; $desktop=[Environment]::GetFolderPath('Desktop'); $candidates=@((Join-Path $desktop 'Mill Manager.lnk')); if($env:OneDrive){$candidates += (Join-Path $env:OneDrive 'Desktop\Mill Manager.lnk')}; foreach($p in $candidates ^| Select-Object -Unique){ if(Test-Path $p){ $s=$ws.CreateShortcut($p); if($s.WorkingDirectory -and (Test-Path (Join-Path $s.WorkingDirectory 'runtime\node.exe'))){ Write-Output $s.WorkingDirectory; break } } }"`) do set "INSTALL_ROOT=%%I"
-
-if not defined INSTALL_ROOT (
+if not exist "%UPDATE_ROOT%\Locate Mill Manager.ps1" (
   echo.
-  echo ERROR: Existing Mill Manager installation could not be found automatically.
-  echo Please make sure the "Mill Manager" desktop shortcut still exists.
+  echo ERROR: Update helper is missing.
+  echo Please extract the complete update ZIP again.
   echo Nothing was changed.
   pause
   exit /b 1
 )
 
-if not exist "%INSTALL_ROOT%\runtime\node.exe" (
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -ExecutionPolicy Bypass -File "%UPDATE_ROOT%\Locate Mill Manager.ps1"`) do set "INSTALL_ROOT=%%I"
+
+if not defined INSTALL_ROOT (
   echo.
-  echo ERROR: Existing Mill Manager installation is incomplete.
+  echo ERROR: Existing Mill Manager installation was not found.
   echo Nothing was changed.
   pause
   exit /b 1
