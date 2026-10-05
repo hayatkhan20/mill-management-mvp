@@ -34,6 +34,7 @@ if errorlevel 8 goto :error
 
 copy /Y "%ROOT%\README-CLIENT.txt" "%FILES%\README-CLIENT.txt" >nul
 copy /Y "%ROOT%\Apply Mill Manager Update.bat" "%DEST%\Apply Mill Manager Update.bat" >nul
+copy /Y "%ROOT%\Locate Mill Manager.ps1" "%DEST%\Locate Mill Manager.ps1" >nul
 
 echo Creating ZIP...
 powershell -NoProfile -ExecutionPolicy Bypass -Command "Compress-Archive -Path '%DEST%\*' -DestinationPath '%ZIP%' -Force"
