@@ -20,13 +20,8 @@ export default function DataManagement(){
     }catch(e){setError(e.message)}finally{setBusy(false)}
   };
   return <Card>
-    <h3>Data Management — Start Fresh</h3>
-    <p>This option is for starting the mill records from scratch. <strong>Do not use this to begin a new day or month</strong>; the software already keeps monthly history and carries opening balances forward.</p>
-    <p>A full SQLite backup is created in the installation's <code>backups</code> folder before any records are cleared. If the backup fails, the reset will not run.</p>
-    <div className="note-card">
-      <strong>Records removed:</strong> all sales, customer/source/employee accounts, purchases, stock movements, payments, expenses, production and daily cash records.
-      <p><strong>Preserved:</strong> application files, activation/license, product catalog and backup files.</p>
-    </div>
+    <h3>Start Fresh</h3>
+    <p><strong>Warning:</strong> Reset deletes all business records after saving a database backup. License, products, and backups are preserved.</p>
     <ErrorBox error={error}/>
     <SuccessBox text={result?.ok?`Records reset. Backup saved: ${result.backup_file}. Software activation and product catalog preserved.`:''}/>
     <form className="form-grid" onSubmit={reset}>
