@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useUiPreferences } from '../context/UiPreferences';
 import { api } from '../api';
 import { Card, Empty, ErrorBox, SuccessBox } from '../components/Common';
-import { money, num, printNamed, today } from '../utils';
+import { money, num, printNamed, today, monthNow } from '../utils';
+import MoneyInput from '../components/MoneyInput';
 import { MessageCircle, Plus, Printer, Search, Trash2, UserPlus } from 'lucide-react';
 import DateField, { formatDateDMY } from '../components/DateField';
 
@@ -18,10 +19,12 @@ export default function Sales(){
  const [error,setError]=useState(''),[success,setSuccess]=useState(''),[printSale,setPrintSale]=useState(null),[editSaleId,setEditSaleId]=useState(null);
  const [showAddCustomer,setShowAddCustomer]=useState(false),[newCustomer,setNewCustomer]=useState(blankCustomer());
  const [historyDate,setHistoryDate]=useState(today()),[historyRows,setHistoryRows]=useState([]);
+ const [monthlyMonth,setMonthlyMonth]=useState(monthNow()),[monthly,setMonthly]=useState(null),[paymentMethod,setPaymentMethod]=useState('Cash');
 
  const loadBase=async()=>{try{const [c,p,b]=await Promise.all([api.get('/customers'),api.get('/products'),api.get('/sales/next-bill')]);setCustomers(c);setProducts(p);if(!editSaleId)setBill(b.bill_no);}catch(e){setError(e.message)}};
  const loadHistory=async(value=historyDate)=>{try{setHistoryRows(await api.get(value?`/sales?date=${value}`:'/sales'));}catch(e){setError(e.message)}};
  useEffect(()=>{loadBase();loadHistory(today())},[]);
+ useEffect(()=>{api.get(`/sales/monthly-products?month=${monthlyMonth}`).then(setMonthly).catch(e=>setError(e.message))},[monthlyMonth]);
 
  const productOf=(item)=>products.find(p=>String(p.id)===String(item.product_id));
  const isBardana=(item)=>productOf(item)?.name==='Bardana';
@@ -58,7 +61,7 @@ export default function Sales(){
  }));
 
  const resetSale=async()=>{
-   setEditSaleId(null);setCustomerId('');setCustomerQuery('');setDate(today());setReceived('');setRemarks('');setItems([blankItem()]);
+   setEditSaleId(null);setCustomerId('');setCustomerQuery('');setDate(today());setReceived('');setRemarks('');setPaymentMethod('Cash');setItems([blankItem()]);
    const b=await api.get('/sales/next-bill');setBill(b.bill_no);
  };
  const addCustomer=async e=>{
@@ -73,11 +76,12 @@ export default function Sales(){
    e.preventDefault();setError('');setSuccess('');
    if(!customerId){setError('Please select a customer.');return;}
    try{
-     const payload={bill_no:bill,date,customer_id:customerId,received_amount:received||0,remarks,items};
+     const payload={bill_no:bill,date,customer_id:customerId,received_amount:received||0,payment_method:paymentMethod,remarks,items};
      const result=await api.post(editSaleId?`/sales/${editSaleId}/update`:'/sales',payload);
      const detail=await api.get(`/sales/${result.id}`);setPrintSale(detail);
      setSuccess(editSaleId?'Sale updated.':'Sale saved.');
      const saleDate=date;await resetSale();await loadBase();if(!historyDate||historyDate===saleDate)await loadHistory(historyDate);
+     if(saleDate.startsWith(monthlyMonth))setMonthly(await api.get(`/sales/monthly-products?month=${monthlyMonth}`));
    }catch(e){setError(e.message)}
  };
  const openSale=async id=>{try{setPrintSale(await api.get(`/sales/${id}`));}catch(e){setError(e.message)}};
@@ -85,7 +89,7 @@ export default function Sales(){
    try{
      const s=await api.get(`/sales/${id}`);
      setEditSaleId(s.id);setBill(s.bill_no);setDate(s.date);setCustomerId(String(s.customer_id));setCustomerQuery(s.customer_name);
-     setReceived(s.received_amount);setRemarks(s.remarks||'');
+     setReceived(s.received_amount);setPaymentMethod(s.payment_method||'Cash');setRemarks(s.remarks||'');
      setItems(s.items.map(i=>{
        const isBardanaItem=i.product_name==='Bardana';
        const size=Number(i.bag_size||0);
@@ -140,7 +144,7 @@ export default function Sales(){
            </div>}
        <input required type="number" min="1" step="1" value={it.bags} onChange={e=>updateItem(idx,'bags',e.target.value)}/>
        <input readOnly value={bardana?'—':(it.total_kg||'')} placeholder="0"/>
-       <input required type="number" min="0.01" step="0.01" value={it.rate} onChange={e=>updateItem(idx,'rate',e.target.value)}/>
+       <MoneyInput required value={it.rate} onChange={value=>updateItem(idx,'rate',value)}/>
        <div className="amount-cell">{money(itemAmount(it))}</div>
        <button type="button" className="icon-btn danger" disabled={items.length===1} onClick={()=>setItems(items.filter((_,i)=>i!==idx))}><Trash2 size={16}/></button>
      </div>
@@ -148,13 +152,30 @@ export default function Sales(){
    <button type="button" className="secondary small" onClick={()=>setItems([...items,blankItem()])}><Plus size={16}/> {t('addItem','Add Item')}</button>
  </div>
 
- <div className="sale-summary"><label>{t('remarks','Remarks')}<input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Optional"/></label><div><span>{t('total','Total')}</span><strong>{money(total)}</strong></div><label>{t('amountReceived','Amount Received')}<input type="number" min="0" max={total||undefined} step="0.01" value={received} onChange={e=>setReceived(e.target.value)}/></label><div><span>{t('pendingThisBill','Pending on this bill')}</span><strong>{money(Math.max(0,total-Number(received||0)))}</strong></div></div>
+ <div className="sale-summary"><label>{t('remarks','Remarks')}<input value={remarks} onChange={e=>setRemarks(e.target.value)} placeholder="Optional"/></label><div><span>{t('total','Total')}</span><strong>{money(total)}</strong></div><label>{t('amountReceived','Amount Received')}<MoneyInput value={received} onChange={setReceived}/></label><label>Received Via<select value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}><option>Cash</option><option>Bank</option></select></label><div><span>{t('pendingThisBill','Pending on this bill')}</span><strong>{money(Math.max(0,total-Number(received||0)))}</strong></div></div>
  <div className="actions">{editSaleId&&<button type="button" className="secondary" onClick={resetSale}>Cancel Edit</button>}<button className="primary">{editSaleId?'Save Changes':t('saveSale','Save Sale')}</button></div></form></Card>
 
  <Card className="section-card-below">
    <div className="history-toolbar"><h3>{t('salesHistory','Sales History')}</h3><div className="history-filter"><DateField value={historyDate} onChange={applyHistoryDate}/><button type="button" className="secondary" onClick={showAll}>{t('showAll','Show All')}</button></div></div>
    <div className="history-stats"><div><span>{t('totalSales','Total Sales')}</span><strong>{money(historySummary.total)}</strong></div><div><span>{t('received','Received')}</span><strong>{money(historySummary.received)}</strong></div><div><span>{t('pending','Pending')}</span><strong>{money(historySummary.pending)}</strong></div><div><span>{t('bills','Bills')}</span><strong>{historySummary.bills}</strong></div></div>
    {historyRows.length?<div className="table-wrap"><table><thead><tr><th>{t('billNo','Bill')}</th><th>{t('date','Date')}</th><th>{t('customer','Customer')}</th><th>{t('total','Total')}</th><th>{t('received','Received')}</th><th>{t('pending','Pending')}</th><th></th></tr></thead><tbody>{historyRows.map(s=><tr key={s.id}><td>{s.bill_no}</td><td>{formatDateDMY(s.date)}</td><td>{s.customer_name}</td><td>{money(s.total_amount)}</td><td>{money(s.received_amount)}</td><td>{money(s.pending_amount)}</td><td><button className="link-btn" onClick={()=>editSale(s.id)}>Edit</button><button className="link-btn" onClick={()=>openSale(s.id)}><Printer size={15}/> View / Print</button></td></tr>)}</tbody></table></div>:<Empty/>}
+ </Card>
+
+ <Card className="section-card-below">
+   <div className="history-toolbar">
+     <h3>Monthly Product Sales</h3>
+     <input aria-label="Sales month" type="month" value={monthlyMonth} onChange={e=>setMonthlyMonth(e.target.value)}/>
+   </div>
+   <p className="muted">Quantity sold from bills, including unpaid sales. Roznamcha counts cash received separately.</p>
+   {monthly?.rows?.length?<div className="table-wrap"><table>
+     <thead><tr><th>Product</th><th>Size</th><th>Quantity Sold</th><th>Amount</th></tr></thead>
+     <tbody>{monthly.rows.map((r,i)=>{
+       const isWaste=r.product==='Waste',isBardana=r.product==='Bardana';
+       return <tr key={i}><td><strong>{r.product}</strong></td><td>{isWaste?'KG':isBardana?'Bags':`${num(r.bag_size)}K`}</td>
+         <td><strong>{num(isWaste?r.total_kg:r.bags)} {isWaste?'KG':'Bags'}</strong></td><td>{money(r.amount)}</td></tr>
+     })}</tbody>
+     <tfoot><tr><td colSpan="3"><strong>Total Sales Value</strong></td><td><strong>{money(monthly.total_amount)}</strong></td></tr></tfoot>
+   </table></div>:<Empty text="No product sales recorded for this month."/>}
  </Card>
 
  {showAddCustomer&&<AddCustomerModal customer={newCustomer} setCustomer={setNewCustomer} onClose={()=>setShowAddCustomer(false)} onSave={addCustomer}/>}
@@ -176,7 +197,7 @@ export function Invoice({sale,onClose}){
    }).join('\n');
 
    const message=[
-     'FLOUR MILL - Sales Bill',
+     'Ijaz Flour Mills Battagram - Sales Bill',
      `Bill: ${sale.bill_no}`,
      `Date: ${formatDateDMY(sale.date)}`,
      `Customer: ${sale.customer_name}`,
@@ -192,5 +213,5 @@ export function Invoice({sale,onClose}){
    window.location.href='whatsapp://send?text='+encodeURIComponent(message);
  };
 
- return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="secondary" onClick={shareWhatsApp}><MessageCircle size={16}/> Share on WhatsApp</button><button className="primary" onClick={print}><Printer size={16}/> Print Bill</button></div><div className="invoice"><div className="invoice-head"><div><h2>FLOUR MILL</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{formatDateDMY(sale.date)}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Unit</th><th>Quantity</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=>{const bardana=i.product_name==='Bardana';return <tr key={i.id}><td>{i.product_name}</td><td>{bardana?'Count':`${num(i.bag_size)} KG / Bag`}</td><td>{num(i.bags)} {bardana?'Bags':'Bags'}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>})}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>
+ return <div className="modal"><div className="invoice-modal"><div className="no-print modal-actions"><button className="secondary" onClick={onClose}>Close</button><button className="secondary" onClick={shareWhatsApp}><MessageCircle size={16}/> Share on WhatsApp</button><button className="primary" onClick={print}><Printer size={16}/> Print Bill</button></div><div className="invoice"><div className="invoice-head"><div><h2>Ijaz Flour Mills Battagram</h2><p>Sales Bill</p></div><div className="invoice-meta"><strong>{sale.bill_no}</strong><span>{formatDateDMY(sale.date)}</span></div></div><div className="bill-to"><span>Customer</span><strong>{sale.customer_name}</strong>{sale.phone&&<small>{sale.phone}</small>}</div><table><thead><tr><th>Product</th><th>Unit</th><th>Quantity</th><th>Rate</th><th>Amount</th></tr></thead><tbody>{sale.items.map(i=>{const bardana=i.product_name==='Bardana';return <tr key={i.id}><td>{i.product_name}</td><td>{bardana?'Count':`${num(i.bag_size)} KG / Bag`}</td><td>{num(i.bags)} {bardana?'Bags':'Bags'}</td><td>{money(i.rate)}</td><td>{money(i.amount)}</td></tr>})}</tbody></table><div className="invoice-totals"><p><span>Total</span><strong>{money(sale.total_amount)}</strong></p><p><span>Received</span><strong>{money(sale.received_amount)}</strong></p><p><span>Pending</span><strong>{money(sale.pending_amount)}</strong></p></div><div className="invoice-foot">Thank you</div></div></div></div>
 }
