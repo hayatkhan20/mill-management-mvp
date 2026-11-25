@@ -1946,41 +1946,42 @@ app.get('/api/appendix/daily', (req, res) => {
 /* Daily Roznamcha: only actual cash received / paid, not credit sales or
    purchase commitments. A bill with 50,000 sold and 10,000 received
    contributes exactly 10,000 cash. */
-const cashBookEvents = (start,end) => {
+// Roznamcha is strictly a per-day cash register; no prior-day opening balance.
+const cashBookEvents = date => {
   const sql=`
     SELECT 'sale' AS type, s.id,s.date,s.bill_no AS reference,
            c.name AS person,COALESCE(s.remarks,'') AS note,
            'IN' AS direction,s.received_amount AS amount
       FROM sales s JOIN customers c ON c.id=s.customer_id
-      WHERE s.date BETWEEN ? AND ? AND s.payment_method='Cash' AND s.received_amount>0
+      WHERE s.date=? AND s.payment_method='Cash' AND s.received_amount>0
     UNION ALL
     SELECT 'customer_payment',p.id,p.date,'Customer Payment',c.name,COALESCE(p.note,''),
            'IN',p.amount
       FROM payments p JOIN customers c ON c.id=p.customer_id
-      WHERE p.date BETWEEN ? AND ? AND p.payment_method='Cash'
+      WHERE p.date=? AND p.payment_method='Cash'
     UNION ALL
     SELECT 'source_payment',sp.id,sp.date,
            CASE WHEN sp.reference_type IS NULL THEN 'Source Payment'
                 ELSE 'Purchase Payment' END,
            src.name,COALESCE(sp.note,''),'OUT',sp.amount
       FROM source_payments sp JOIN sources src ON src.id=sp.source_id
-      WHERE sp.date BETWEEN ? AND ? AND sp.payment_method='Cash'
+      WHERE sp.date=? AND sp.payment_method='Cash'
     UNION ALL
     SELECT 'employee_payment',ep.id,ep.date,'Employee Payment',
            e.name,COALESCE(ep.note,''),'OUT',ep.amount
       FROM employee_payments ep JOIN employees e ON e.id=ep.employee_id
-      WHERE ep.date BETWEEN ? AND ? AND ep.payment_method='Cash'
+      WHERE ep.date=? AND ep.payment_method='Cash'
     UNION ALL
     SELECT 'expense',oe.id,oe.date,oe.category,oe.category,
            COALESCE(oe.note,''),'OUT',oe.amount
       FROM other_expenses oe
-      WHERE oe.date BETWEEN ? AND ? AND oe.payment_method='Cash'
+      WHERE oe.date=? AND oe.payment_method='Cash'
     UNION ALL
     SELECT 'manual',ce.id,ce.date,'Cash Adjustment',ce.person,ce.note,ce.direction,ce.amount
-      FROM cash_entries ce WHERE ce.date BETWEEN ? AND ?
+      FROM cash_entries ce WHERE ce.date=?
     ORDER BY date,id,type
   `;
-  return db.prepare(sql).all(...Array(6).fill(null).flatMap(()=>[start,end])).map(row=>({
+  return db.prepare(sql).all(date,date,date,date,date,date).map(row=>({
     ...row,amount:round2(row.amount)
   }));
 };
@@ -1988,48 +1989,23 @@ const cashBookEvents = (start,end) => {
 app.get('/api/roznamcha', (req,res)=>{
   const date=String(req.query.date||today());
   if(!validDate(date)) return res.status(400).json({error:'Invalid date'});
-  const opening=db.prepare('SELECT date,amount FROM cash_opening WHERE id=1').get();
-  const start=opening?.date || '0001-01-01';
-  const eligible=date>=start;
-  const events=eligible?cashBookEvents(start,date):[];
-  const todayRows=events.filter(row=>row.date===date);
-  const total=(rows,direction)=>round2(rows.filter(r=>r.direction===direction).reduce((s,r)=>s+Number(r.amount),0));
-  const previous=events.filter(row=>row.date<date);
-  const openingCash=round2(Number(opening?.amount||0)+total(previous,'IN')-total(previous,'OUT'));
-  const received=total(todayRows,'IN'),paid=total(todayRows,'OUT');
+  const rows=cashBookEvents(date);
+  const total=direction=>round2(rows.filter(r=>r.direction===direction).reduce((s,r)=>s+Number(r.amount),0));
+  const received=total('IN'),paid=total('OUT');
   res.json({
     date,
-    opening_configured:Boolean(opening),
-    opening_date:opening?.date||null,
-    opening_cash:openingCash,
     cash_received:received,
     cash_paid:paid,
-    closing_cash:round2(openingCash+received-paid),
-    income:todayRows.filter(r=>r.direction==='IN'),
-    expenses:todayRows.filter(r=>r.direction==='OUT'),
-    earlier_than_opening:!eligible
+    net_cash:round2(received-paid),
+    income:rows.filter(r=>r.direction==='IN'),
+    expenses:rows.filter(r=>r.direction==='OUT')
   });
-});
-
-app.post('/api/roznamcha/opening', (req,res)=>{
-  try{
-    const date=String(req.body.date||today());
-    if(!validDate(date)) throw new Error('Invalid opening date');
-    const amount=round2(asNumber(req.body.amount,'Opening cash'));
-    const existing=db.prepare('SELECT date FROM cash_opening WHERE id=1').get();
-    if(existing) throw new Error('Opening cash already configured. Record future differences as an adjustment.');
-    db.prepare('INSERT INTO cash_opening (id,date,amount) VALUES (1,?,?)').run(date,amount);
-    res.json({date,amount});
-  }catch(e){res.status(400).json({error:e.message})}
 });
 
 app.post('/api/roznamcha/adjustment', (req,res)=>{
   try{
     const date=String(req.body.date||today());
     if(!validDate(date)) throw new Error('Invalid date');
-    const opening=db.prepare('SELECT date FROM cash_opening WHERE id=1').get();
-    if(!opening) throw new Error('Set opening cash before recording cash adjustments');
-    if(date<opening.date) throw new Error('Date is before opening cash');
     const direction=String(req.body.direction||'');
     if(!['IN','OUT'].includes(direction)) throw new Error('Choose Cash In or Cash Out');
     const person=requiredText(req.body.person,'Person / Description');
@@ -2047,8 +2023,7 @@ app.post('/api/roznamcha/adjustment/:id/update', (req,res)=>{
     const existing=db.prepare('SELECT * FROM cash_entries WHERE id=?').get(id);
     if(!existing) return res.status(404).json({error:'Adjustment not found'});
     const date=String(req.body.date||existing.date);
-    const opening=db.prepare('SELECT date FROM cash_opening WHERE id=1').get();
-    if(!validDate(date)||!opening||date<opening.date) throw new Error('Invalid adjustment date');
+    if(!validDate(date)) throw new Error('Invalid date');
     const direction=String(req.body.direction||existing.direction);
     if(!['IN','OUT'].includes(direction)) throw new Error('Choose Cash In or Cash Out');
     const person=requiredText(req.body.person,'Person / Description');
@@ -2059,7 +2034,6 @@ app.post('/api/roznamcha/adjustment/:id/update', (req,res)=>{
     res.json({id});
   }catch(e){res.status(400).json({error:e.message})}
 });
-
 
 /* Reset business records only after a verified database backup.
    Product catalog, license, and version metadata survive this operation. */
