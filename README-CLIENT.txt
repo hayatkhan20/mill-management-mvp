@@ -196,3 +196,49 @@ If an issue appears, record:
 
 Do not delete or reinstall the database as a troubleshooting step
 without making a backup first.
+
+
+NOVEMBER 2026 CLIENT FEEDBACK - PENDING TEST / NEXT UPDATE
+--------------------------------------------------------
+This update adds a Daily Activities / Roznamcha cash register.
+
+- Amadan records actual CASH RECEIVED, not the full sales-bill value.
+  Example: bill Rs 50,000, paid Rs 10,000 -> Amadan Rs 10,000.
+- Subsequent customer cash payments, including advances, are included on
+  their actual payment dates.
+- Source payments, employee payments and paid expenses count as Kharch.
+- Purchases on credit and salary accrued but not paid DO NOT count as cash out.
+- Bank payments/receipts are recorded on accounts but do not affect cash in hand.
+- Set Opening Cash once based on cash physically available at the start.
+  Closing Cash = Opening Cash + Cash In - Cash Out.
+  Closing cash is carried into the following day's opening.
+- Other Cash Adjustment is for miscellaneous entries ONLY; do not double-enter
+  a transaction already recorded elsewhere in the application.
+- Monthly Product Sales is found under Sales and reports quantity and sale
+  value, whether or not the customer has paid.
+- Sales Bill and WhatsApp bill now show Ijaz Flour Mills Battagram.
+- Amount inputs show comma separators, e.g. 1,000,000.
+- Settings > Data Management has an irreversible full business-data reset.
+  Reset makes a verified database backup first and preserves the license,
+  application, product catalog and backup files.
+
+IMPORTANT:
+Before updating a production client's machine, test the complete workflow
+with a COPY of a real installation and verify backups. Never run Reset on a
+client installation to test a new software version.
+
+DEVELOPER ACCEPTANCE CHECK:
+1. Add sale Rs 50,000 with Rs 10,000 received by Cash.
+   Verify Sales shows Rs 50,000 and Roznamcha shows Rs 10,000 Cash In only.
+2. Receive another Rs 5,000 cash from the same customer on the next date.
+   Verify next day's Cash In is Rs 5,000 and customer pending decreases.
+3. Record a Wheat Purchase Rs 100,000 with no payment; cash out must be zero.
+4. Pay the source Rs 20,000 cash; Kharch should increase by exactly Rs 20,000.
+5. Add paid expense Rs 2,000 cash; verify closing cash.
+6. Repeat a payment using Bank; source/customer balance changes but the
+   physical cashbook is unaffected.
+7. Verify bill header and WhatsApp message branding.
+8. Verify monthly product sales updates after editing a bill.
+9. Verify monetary inputs display commas and POST unformatted numbers.
+10. Verify full database backup and restore behavior with TEST DATA ONLY.
+
