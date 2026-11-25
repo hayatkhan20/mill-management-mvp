@@ -399,11 +399,11 @@ app.get('/api/customers/:id', (req, res) => {
   const events = db.prepare(`
     SELECT 'sale' AS type, s.id, s.date, s.created_at, s.bill_no AS reference,
            s.total_amount AS debit, s.received_amount AS credit,
-           s.pending_amount AS pending_on_sale, s.remarks AS note
+           s.pending_amount AS pending_on_sale, s.remarks AS note, s.payment_method
     FROM sales s WHERE s.customer_id=?
     UNION ALL
     SELECT 'payment' AS type, p.id, p.date, p.created_at, 'Payment' AS reference,
-           0 AS debit, p.amount AS credit, 0 AS pending_on_sale, p.note AS note
+           0 AS debit, p.amount AS credit, 0 AS pending_on_sale, p.note AS note, p.payment_method
     FROM payments p WHERE p.customer_id=?
     ORDER BY date ASC, created_at ASC, id ASC
   `).all(id, id);
@@ -563,15 +563,15 @@ app.get('/api/sources/:id', (req, res) => {
   const events = db.prepare(`
     SELECT 'wheat' AS type, w.id, w.date, w.created_at, 'Wheat Purchase #' || w.id AS reference,
            (w.total_cost + COALESCE(w.bardana_cost,0)) AS debit, 0 AS credit,
-           w.remarks AS note, NULL AS payment_reference_type
+           w.remarks AS note, NULL AS payment_reference_type, NULL AS payment_method
     FROM wheat_in w WHERE w.source_id=?
     UNION ALL
     SELECT 'bardana' AS type, b.id, b.date, b.created_at, 'Bardana Purchase #' || b.id AS reference,
-           b.total_cost AS debit, 0 AS credit, b.remarks AS note, NULL AS payment_reference_type
+           b.total_cost AS debit, 0 AS credit, b.remarks AS note, NULL AS payment_reference_type, NULL AS payment_method
     FROM bardana_purchases b WHERE b.source_id=?
     UNION ALL
     SELECT 'payment' AS type, p.id, p.date, p.created_at, 'Payment' AS reference,
-           0 AS debit, p.amount AS credit, p.note AS note, p.reference_type AS payment_reference_type
+           0 AS debit, p.amount AS credit, p.note AS note, p.reference_type AS payment_reference_type, p.payment_method
     FROM source_payments p WHERE p.source_id=?
     ORDER BY date ASC, created_at ASC, type ASC, id ASC
   `).all(id, id, id);
@@ -643,7 +643,8 @@ app.get('/api/wheat-in', (req, res) => {
            COALESCE(s.source_type,w.source_type) AS source_type,
            ROUND(w.total_cost + COALESCE(w.bardana_cost,0),2) AS purchase_total,
            ROUND(COALESCE((SELECT SUM(r.total_kg) FROM wheat_receipts r WHERE r.purchase_id=w.id),0),2) AS received_kg,
-           ROUND(COALESCE((SELECT SUM(r.bags) FROM wheat_receipts r WHERE r.purchase_id=w.id),0),2) AS received_bags
+           ROUND(COALESCE((SELECT SUM(r.bags) FROM wheat_receipts r WHERE r.purchase_id=w.id),0),2) AS received_bags,
+           COALESCE((SELECT sp.payment_method FROM source_payments sp WHERE sp.reference_type='wheat_in' AND sp.reference_id=w.id LIMIT 1),'Cash') AS payment_method
     FROM wheat_in w
     LEFT JOIN sources s ON s.id=w.source_id
   `;
@@ -874,7 +875,8 @@ app.post('/api/wheat-receipts/:id/update', (req,res)=>{
 app.get('/api/bardana-purchases', (req, res) => {
   const date = String(req.query.date || '').trim();
   const baseSql = `
-    SELECT b.*, s.name AS source_name, s.source_type
+    SELECT b.*, s.name AS source_name, s.source_type,
+           COALESCE((SELECT sp.payment_method FROM source_payments sp WHERE sp.reference_type='bardana_purchase' AND sp.reference_id=b.id LIMIT 1),'Cash') AS payment_method
     FROM bardana_purchases b JOIN sources s ON s.id=b.source_id
   `;
   if (date) {
