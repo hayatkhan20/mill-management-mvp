@@ -4,8 +4,9 @@ import { api } from '../api';
 import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { money, monthNow, today } from '../utils';
 import DateField, { formatDateDMY } from '../components/DateField';
+import MoneyInput from '../components/MoneyInput';
 
-const blank=()=>({date:today(),amount:'',note:''});
+const blank=()=>({date:today(),amount:'',note:'',payment_method:'Cash'});
 const recurringCategories=['Electricity Bill','Meal','Machinery Cost'];
 
 export default function Expenses(){
@@ -39,7 +40,7 @@ export default function Expenses(){
 
  const edit=(row)=>{
   setEditingId(row.id);
-  setForm({date:row.date,amount:row.amount,note:row.note||''});
+  setForm({date:row.date,amount:row.amount,note:row.note||'',payment_method:row.payment_method||'Cash'});
   if(recurringCategories.includes(row.category)){
    setCategoryChoice(row.category);
    setCustomCategory('');
@@ -82,7 +83,8 @@ export default function Expenses(){
       <input required autoFocus value={customCategory} onChange={e=>setCustomCategory(e.target.value)} placeholder="e.g. Generator Repair, Office Chair, Fuel"/>
      </label>}
 
-     <label>{t('amount','Amount')}<input required type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></label>
+     <label>{t('amount','Amount')}<MoneyInput required value={form.amount} onChange={amount=>setForm({...form,amount})}/></label>
+     <label>Paid Via<select value={form.payment_method} onChange={e=>setForm({...form,payment_method:e.target.value})}><option>Cash</option><option>Bank</option></select></label>
      <label>{t('note','Note')}<input value={form.note} onChange={e=>setForm({...form,note:e.target.value})} placeholder="Optional"/></label>
 
      <div className="span-2">

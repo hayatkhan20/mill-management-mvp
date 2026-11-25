@@ -5,8 +5,9 @@ import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Com
 import { money, num, today } from '../utils';
 import { UserPlus } from 'lucide-react';
 import DateField, { formatDateDMY } from '../components/DateField';
+import MoneyInput from '../components/MoneyInput';
 
-const initial=()=>({date:today(),source_id:'',bags:'',total_kg:'',rate_per_kg:'',bardana_rate_per_bag:'',paid_amount:'',remarks:''});
+const initial=()=>({date:today(),source_id:'',bags:'',total_kg:'',rate_per_kg:'',bardana_rate_per_bag:'',paid_amount:'',payment_method:'Cash',remarks:''});
 const blankSource=()=>({name:'',source_type:'Private',phone:'',address:''});
 
 export default function WheatIn({showHistory=true,editRecord=null,onSaved}){
@@ -15,7 +16,7 @@ export default function WheatIn({showHistory=true,editRecord=null,onSaved}){
  const [showAddSource,setShowAddSource]=useState(false),[newSource,setNewSource]=useState(blankSource());
  const load=async()=>{try{const [s,w]=await Promise.all([api.get('/sources'),api.get('/wheat-in')]);setSources(s);setRows(w)}catch(e){setError(e.message)}};
  useEffect(()=>{load()},[]);
- useEffect(()=>{if(editRecord)setForm({date:editRecord.date,source_id:String(editRecord.source_id||''),bags:editRecord.bags??'',total_kg:editRecord.total_kg??'',rate_per_kg:editRecord.rate_per_kg??'',bardana_rate_per_bag:editRecord.bardana_rate_per_bag??'',paid_amount:editRecord.paid_amount??'',remarks:editRecord.remarks||''})},[editRecord]);
+ useEffect(()=>{if(editRecord)setForm({date:editRecord.date,source_id:String(editRecord.source_id||''),bags:editRecord.bags??'',total_kg:editRecord.total_kg??'',rate_per_kg:editRecord.rate_per_kg??'',bardana_rate_per_bag:editRecord.bardana_rate_per_bag??'',paid_amount:editRecord.paid_amount??'',payment_method:editRecord.payment_method||'Cash',remarks:editRecord.remarks||''})},[editRecord]);
  const wheatCost=Number(form.total_kg||0)*Number(form.rate_per_kg||0);
  const bardanaCost=Number(form.bags||0)*Number(form.bardana_rate_per_bag||0);
  const total=wheatCost+bardanaCost;
@@ -35,11 +36,12 @@ export default function WheatIn({showHistory=true,editRecord=null,onSaved}){
     </label>
     <label>Purchased Bags / Bardana<input type="number" min="0" step="1" value={form.bags} onChange={e=>setForm({...form,bags:e.target.value})}/></label>
     <label>Purchased Wheat (KG)<input required type="number" min="0.01" step="0.01" value={form.total_kg} onChange={e=>setForm({...form,total_kg:e.target.value})}/></label>
-    <label>{t('wheatRateKg','Wheat Rate per KG')}<input required type="number" min="0" step="0.01" value={form.rate_per_kg} onChange={e=>setForm({...form,rate_per_kg:e.target.value})}/></label>
+    <label>{t('wheatRateKg','Wheat Rate per KG')}<MoneyInput required value={form.rate_per_kg} onChange={value=>setForm({...form,rate_per_kg:value})}/></label>
     <label>{t('wheatCost','Wheat Cost')}<input value={money(wheatCost)} disabled/></label>
-    <label>{t('bardanaRateBag','Bardana Rate per Bag')}<input type="number" min="0" step="0.01" value={form.bardana_rate_per_bag} onChange={e=>setForm({...form,bardana_rate_per_bag:e.target.value})} placeholder="0 if included/free"/></label>
+    <label>{t('bardanaRateBag','Bardana Rate per Bag')}<MoneyInput value={form.bardana_rate_per_bag} onChange={value=>setForm({...form,bardana_rate_per_bag:value})} placeholder="0 if included/free"/></label>
     <label>{t('bardanaCost','Bardana Cost')}<input value={money(bardanaCost)} disabled/></label>
-    <label>{t('totalPurchaseCost','Total Purchase Cost')}<input value={money(total)} disabled/></label><label>Amount Paid<input type="number" min="0" max={total||undefined} step="0.01" value={form.paid_amount} onChange={e=>setForm({...form,paid_amount:e.target.value})}/></label>
+    <label>{t('totalPurchaseCost','Total Purchase Cost')}<input value={money(total)} disabled/></label><label>Amount Paid<MoneyInput value={form.paid_amount} onChange={value=>setForm({...form,paid_amount:value})}/></label>
+    <label>Paid Via<select value={form.payment_method} onChange={e=>setForm({...form,payment_method:e.target.value})}><option>Cash</option><option>Bank</option></select></label>
     <label className="span-2">{t('remarks','Remarks')}<textarea value={form.remarks} onChange={e=>setForm({...form,remarks:e.target.value})}/></label>
     <div className="span-2"><button className="primary">{editRecord?'Save Changes':t('saveWheatPurchase','Save Wheat Purchase')}</button></div>
    </form></Card>

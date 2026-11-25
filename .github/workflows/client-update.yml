@@ -1,0 +1,80 @@
+name: Verify and package Mill Manager update
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Validate backend syntax
+        run: |
+          node --check backend/src/server.js
+          node --check backend/src/db.js
+          node --check backend/src/license.js
+
+      - name: Verify daily cash and monthly sales using isolated test database
+        run: node scripts/verify-roznamcha.mjs
+
+      - name: Build production frontend
+        run: npm run build --prefix frontend
+
+      - name: Assemble clean existing-client update
+        shell: pwsh
+        run: |
+          $release = 'release/Mill-Management-Update'
+          $updateFiles = Join-Path $release 'update-files'
+          New-Item -ItemType Directory -Force -Path "$updateFiles/backend/src", "$updateFiles/frontend/dist" | Out-Null
+          Copy-Item -Path backend/src/* -Destination "$updateFiles/backend/src" -Recurse -Force
+          Copy-Item -Path frontend/dist/* -Destination "$updateFiles/frontend/dist" -Recurse -Force
+          Copy-Item -Path README-CLIENT.txt -Destination "$updateFiles/README-CLIENT.txt"
+          Copy-Item -Path 'Apply Mill Manager Update.bat', 'Locate Mill Manager.ps1' -Destination $release
+          $required = @(
+            "$release/Apply Mill Manager Update.bat",
+            "$release/Locate Mill Manager.ps1",
+            "$updateFiles/backend/src/server.js",
+            "$updateFiles/backend/src/db.js",
+            "$updateFiles/frontend/dist/index.html"
+          )
+          foreach ($file in $required) {
+            if (-not (Test-Path $file)) { throw "Missing update file: $file" }
+          }
+          $unsafe = Get-ChildItem $release -Recurse -File | Where-Object {
+            $_.Extension -in '.db', '.sqlite', '.sqlite3' -or
+            $_.Name -in @('license.json', 'license-private.pem', 'node.exe')
+          }
+          if ($unsafe) { throw 'Update must not include live databases, license, or runtime' }
+          Compress-Archive -Path "$release/*" -DestinationPath 'release/Mill-Management-Update.zip' -Force
+
+      - name: Upload ready-to-extract client ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mill-Management-Update
+          path: release/Mill-Management-Update/*
+          if-no-files-found: error
+          retention-days: 30

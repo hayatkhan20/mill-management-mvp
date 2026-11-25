@@ -1,4 +1,4 @@
-import { Boxes, ClipboardList, Factory, LayoutDashboard, PackageMinus, ReceiptText, Settings as SettingsIcon, ShoppingBasket, UsersRound, WalletCards } from 'lucide-react';
+import { Boxes, ClipboardList, Factory, LayoutDashboard, PackageMinus, ReceiptText, Settings as SettingsIcon, ShoppingBasket, UsersRound, WalletCards, BookOpenText } from 'lucide-react';
 import { useUiPreferences } from '../context/UiPreferences';
 
 const items = [
@@ -11,6 +11,7 @@ const items = [
   ['stock', 'stock', 'Stock', Boxes],
   ['appendix', 'appendix', 'Appendix', ClipboardList],
   ['expenses', 'expenses', 'Expenses', WalletCards],
+  ['daily', 'daily', 'Daily Activities', BookOpenText],
   ['settings', 'settings', 'Settings', SettingsIcon],
 ];
 

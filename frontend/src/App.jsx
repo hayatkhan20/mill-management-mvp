@@ -9,6 +9,7 @@ import Accounts from './pages/Accounts';
 import Stock from './pages/Stock';
 import Appendix from './pages/Appendix';
 import Expenses from './pages/Expenses';
+import DailyActivities from './pages/DailyActivities';
 import Settings from './pages/Settings';
 import { UiPreferencesProvider } from './context/UiPreferences';
 import LicenseActivation from './pages/LicenseActivation';
@@ -24,6 +25,7 @@ const pages={
   stock:Stock,
   appendix:Appendix,
   expenses:Expenses,
+  daily:DailyActivities,
   settings:Settings,
 };
 

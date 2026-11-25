@@ -5,6 +5,7 @@ import { Card, Empty, ErrorBox, PageHeader, SuccessBox } from '../components/Com
 import { money, num, printNamed, today } from '../utils';
 import { Invoice } from './Sales';
 import DateField, { formatDateDMY } from '../components/DateField';
+import MoneyInput from '../components/MoneyInput';
 
 const balanceText=(value)=>Number(value)<0?`Advance ${money(Math.abs(value))}`:`${money(value)}`;
 
@@ -15,17 +16,17 @@ export default function Customers(){
  const [editing,setEditing]=useState(false);
  const [editCustomer,setEditCustomer]=useState({name:'',phone:'',address:''});
  const [newCustomer,setNewCustomer]=useState({name:'',phone:'',address:''});
- const [payment,setPayment]=useState({date:today(),amount:'',note:''}),[editingPaymentId,setEditingPaymentId]=useState(null),[ledgerSale,setLedgerSale]=useState(null);
+ const [payment,setPayment]=useState({date:today(),amount:'',note:'',payment_method:'Cash'}),[editingPaymentId,setEditingPaymentId]=useState(null),[ledgerSale,setLedgerSale]=useState(null);
 
  const load=()=>Promise.all([api.get('/customers'),api.get('/customers-summary')]).then(([r,s])=>{setRows(r);setSummary(s)}).catch(e=>setError(e.message));
  useEffect(() => { load(); }, []);
 
  const add=async e=>{e.preventDefault();setError('');try{await api.post('/customers',newCustomer);setNewCustomer({name:'',phone:'',address:''});setSuccess('Customer added.');load();}catch(e){setError(e.message)}};
- const open=async id=>{try{const customer=await api.get(`/customers/${id}`);setSelected(customer);setEditCustomer({name:customer.name||'',phone:customer.phone||'',address:customer.address||''});setEditing(false);setPayment({date:today(),amount:'',note:''});}catch(e){setError(e.message)}};
+ const open=async id=>{try{const customer=await api.get(`/customers/${id}`);setSelected(customer);setEditCustomer({name:customer.name||'',phone:customer.phone||'',address:customer.address||''});setEditing(false);setPayment({date:today(),amount:'',note:'',payment_method:'Cash'});}catch(e){setError(e.message)}};
  const saveCustomer=async e=>{e.preventDefault();setError('');try{await api.post(`/customers/${selected.id}/update`,editCustomer);const customer=await api.get(`/customers/${selected.id}`);setSelected(customer);setEditCustomer({name:customer.name||'',phone:customer.phone||'',address:customer.address||''});setEditing(false);setSuccess('Customer details updated.');load();}catch(e){setError(e.message)}};
- const pay=async e=>{e.preventDefault();setError('');try{if(editingPaymentId)await api.post(`/payments/${editingPaymentId}/update`,payment);else await api.post('/payments',{customer_id:selected.id,...payment});setSuccess(editingPaymentId?'Payment updated.':'Payment received.');setEditingPaymentId(null);setPayment({date:today(),amount:'',note:''});await open(selected.id);load();}catch(e){setError(e.message)}};
+ const pay=async e=>{e.preventDefault();setError('');try{if(editingPaymentId)await api.post(`/payments/${editingPaymentId}/update`,payment);else await api.post('/payments',{customer_id:selected.id,...payment});setSuccess(editingPaymentId?'Payment updated.':'Payment received.');setEditingPaymentId(null);setPayment({date:today(),amount:'',note:'',payment_method:'Cash'});await open(selected.id);load();}catch(e){setError(e.message)}};
  const openBill=async id=>{try{setLedgerSale(await api.get(`/sales/${id}`))}catch(e){setError(e.message)}};
- const editPayment=e=>{setEditingPaymentId(e.id);setPayment({date:e.date,amount:e.credit,note:e.note||''})};
+ const editPayment=e=>{setEditingPaymentId(e.id);setPayment({date:e.date,amount:e.credit,note:e.note||'',payment_method:e.payment_method||'Cash'})};
 
  const filteredRows=rows.filter(r=>{const q=search.trim().toLowerCase();if(!q)return true;return [r.name,r.phone,r.address].some(value=>String(value||'').toLowerCase().includes(q))});
 
@@ -54,7 +55,8 @@ export default function Customers(){
 
    <div className="quantities">{selected.quantities.map(q=><span key={q.product}>{q.product}: <strong>{num(q.quantity)} {q.unit}</strong></span>)}</div>
 
-   <Card className="no-print"><h3>{editingPaymentId?'Edit Payment':'Receive Payment / Advance'}</h3><form className="form-inline" onSubmit={pay}><DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/><input required type="number" min="0.01" step="0.01" placeholder="Amount" value={payment.amount} onChange={e=>setPayment({...payment,amount:e.target.value})}/><input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/><button className="primary">{editingPaymentId?'Save':'Receive'}</button>{editingPaymentId&&<button type="button" className="secondary" onClick={()=>{setEditingPaymentId(null);setPayment({date:today(),amount:'',note:''})}}>Cancel</button>}</form></Card>
+   <Card className="no-print"><h3>{editingPaymentId?'Edit Payment':'Receive Payment / Advance'}</h3><form className="form-inline" onSubmit={pay}><DateField required value={payment.date} onChange={date=>setPayment({...payment,date})}/><MoneyInput required placeholder="Amount" value={payment.amount} onChange={amount=>setPayment({...payment,amount})}/>
+    <select aria-label="Payment method" value={payment.payment_method} onChange={e=>setPayment({...payment,payment_method:e.target.value})}><option>Cash</option><option>Bank</option></select><input placeholder="Note (optional)" value={payment.note} onChange={e=>setPayment({...payment,note:e.target.value})}/><button className="primary">{editingPaymentId?'Save':'Receive'}</button>{editingPaymentId&&<button type="button" className="secondary" onClick={()=>{setEditingPaymentId(null);setPayment({date:today(),amount:'',note:'',payment_method:'Cash'})}}>Cancel</button>}</form></Card>
 
    <Card><h3>Ledger</h3>{selected.ledger.length?<div className="table-wrap"><table><thead><tr><th>Date</th><th>Reference</th><th>Purchase</th><th>Payment</th><th>Balance</th></tr></thead><tbody>{selected.ledger.map((e,i)=><tr key={`${e.type}-${e.id}-${i}`}><td>{formatDateDMY(e.date)}</td><td>{e.type==='sale'?<button className="link-btn" onClick={()=>openBill(e.id)}>{e.reference}</button>:e.reference}</td><td>{e.type==='sale'?money(e.debit):'—'}</td><td>{money(e.credit)}</td><td className={e.balance<0?'advance':''}>{e.balance<0?`Advance ${money(Math.abs(e.balance))}`:money(e.balance)}{e.type==='payment'&&<button className="link-btn" onClick={()=>editPayment(e)}>Edit</button>}</td></tr>)}</tbody></table></div>:<Empty/>}</Card>
   </div></div>}
