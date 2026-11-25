@@ -81,7 +81,7 @@ export default function Sales(){
      const detail=await api.get(`/sales/${result.id}`);setPrintSale(detail);
      setSuccess(editSaleId?'Sale updated.':'Sale saved.');
      const saleDate=date;await resetSale();await loadBase();if(!historyDate||historyDate===saleDate)await loadHistory(historyDate);
-     if(saleDate.startsWith(monthlyMonth))setMonthly(await api.get(`/sales/monthly-products?month=${monthlyMonth}`));
+     setMonthly(await api.get(`/sales/monthly-products?month=${monthlyMonth}`));
    }catch(e){setError(e.message)}
  };
  const openSale=async id=>{try{setPrintSale(await api.get(`/sales/${id}`));}catch(e){setError(e.message)}};
