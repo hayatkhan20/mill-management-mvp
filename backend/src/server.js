@@ -2077,7 +2077,7 @@ app.post('/api/data/reset', async (req,res)=>{
   const backupDir=path.resolve(__dirname,'../../backups');
   fs.mkdirSync(backupDir,{recursive:true});
   const stamp=new Date().toISOString().replace(/[:.]/g,'-');
-  const backup=path.join(backupDir,`before-reset-\${stamp}.db`);
+  const backup=path.join(backupDir,`before-reset-${stamp}.db`);
   try {
     await db.backup(backup);
     const file=fs.statSync(backup);
@@ -2095,8 +2095,10 @@ app.post('/api/data/reset', async (req,res)=>{
         'employee_payments','other_expenses','cash_entries','cash_opening',
         'customers','sources','employees'
       ]){
-        db.prepare(`DELETE FROM \${table}`).run();
+        db.prepare(`DELETE FROM ${table}`).run();
       }
+      // The product catalog is preserved; other business IDs can restart.
+      db.prepare("DELETE FROM sqlite_sequence WHERE name IN ('sale_items','sales','payments','source_payments','wheat_receipts','wheat_in','bardana_purchases','production_items','production','product_consumption','opening_product_stock','physical_stock_counts','stock_movements','bardana_movements','employee_salary_due','employee_payments','other_expenses','cash_entries','customers','sources','employees')").run();
     })();
     res.json({ok:true,backup_file:path.basename(backup),license_preserved:true,products_preserved:true});
   }catch(e){
