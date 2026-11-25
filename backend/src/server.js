@@ -1229,6 +1229,30 @@ app.get('/api/sales', (req, res) => {
   res.json(db.prepare(`${baseSql} ORDER BY s.date DESC, s.id DESC LIMIT ?`).all(limit));
 });
 
+/* Monthly product sales: bill value and quantity, not received cash. */
+app.get('/api/sales/monthly-products', (req,res)=>{
+  const month=String(req.query.month||today().slice(0,7));
+  if(!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({error:'Month must be YYYY-MM'});
+  const rows=db.prepare(`
+    SELECT p.name AS product,si.bag_size AS bag_size,
+      SUM(si.bags) AS bags,SUM(si.total_kg) AS total_kg,
+      ROUND(SUM(si.amount),2) AS amount,
+      COUNT(DISTINCT si.sale_id) AS bills
+    FROM sale_items si
+    JOIN sales s ON s.id=si.sale_id
+    JOIN products p ON p.id=si.product_id
+    WHERE s.date>=? AND s.date<?
+    GROUP BY p.id,p.name,si.bag_size
+    ORDER BY p.name COLLATE NOCASE,si.bag_size
+  `).all(month+'-01',nextMonth(month)+'-01');
+  res.json({month,rows,total_amount:round2(rows.reduce((n,r)=>n+Number(r.amount),0))});
+});
+const nextMonth = month => {
+  const [y,m]=month.split('-').map(Number);
+  const next=new Date(Date.UTC(y,m,1));
+  return next.toISOString().slice(0,7);
+};
+
 app.get('/api/sales/:id', (req, res) => {
   const sale = db.prepare(`SELECT s.*, c.name AS customer_name, c.phone, c.address
     FROM sales s JOIN customers c ON c.id=s.customer_id WHERE s.id=?`).get(Number(req.params.id));
@@ -1916,30 +1940,6 @@ app.get('/api/appendix/daily', (req, res) => {
   });
 });
 
-
-/* Monthly product sales: bill value and quantity, not received cash. */
-app.get('/api/sales/monthly-products', (req,res)=>{
-  const month=String(req.query.month||today().slice(0,7));
-  if(!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({error:'Month must be YYYY-MM'});
-  const rows=db.prepare(`
-    SELECT p.name AS product,si.bag_size AS bag_size,
-      SUM(si.bags) AS bags,SUM(si.total_kg) AS total_kg,
-      ROUND(SUM(si.amount),2) AS amount,
-      COUNT(DISTINCT si.sale_id) AS bills
-    FROM sale_items si
-    JOIN sales s ON s.id=si.sale_id
-    JOIN products p ON p.id=si.product_id
-    WHERE s.date>=? AND s.date<?
-    GROUP BY p.id,p.name,si.bag_size
-    ORDER BY p.name COLLATE NOCASE,si.bag_size
-  `).all(month+'-01',nextMonth(month)+'-01');
-  res.json({month,rows,total_amount:round2(rows.reduce((n,r)=>n+Number(r.amount),0))});
-});
-const nextMonth = month => {
-  const [y,m]=month.split('-').map(Number);
-  const next=new Date(Date.UTC(y,m,1));
-  return next.toISOString().slice(0,7);
-};
 
 /* Daily Roznamcha: only actual cash received / paid, not credit sales or
    purchase commitments. A bill with 50,000 sold and 10,000 received
