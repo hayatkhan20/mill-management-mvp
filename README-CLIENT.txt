@@ -209,9 +209,9 @@ This update adds a Daily Activities / Roznamcha cash register.
 - Source payments, employee payments and paid expenses count as Kharch.
 - Purchases on credit and salary accrued but not paid DO NOT count as cash out.
 - Bank payments/receipts are recorded on accounts but do not affect cash in hand.
-- Set Opening Cash once based on cash physically available at the start.
-  Closing Cash = Opening Cash + Cash In - Cash Out.
-  Closing cash is carried into the following day's opening.
+- Roznamcha is a standalone daily register: no opening cash or previous-day balance.
+- Daily Net Cash = Cash Received (Amadan) - Cash Paid (Kharch).
+- Historical daily records remain available by selecting their date.
 - Other Cash Adjustment is for miscellaneous entries ONLY; do not double-enter
   a transaction already recorded elsewhere in the application.
 - Monthly Product Sales is found under Sales and reports quantity and sale
@@ -234,7 +234,7 @@ DEVELOPER ACCEPTANCE CHECK:
    Verify next day's Cash In is Rs 5,000 and customer pending decreases.
 3. Record a Wheat Purchase Rs 100,000 with no payment; cash out must be zero.
 4. Pay the source Rs 20,000 cash; Kharch should increase by exactly Rs 20,000.
-5. Add paid expense Rs 2,000 cash; verify closing cash.
+5. Add paid expense Rs 2,000 cash; verify the selected day's net cash.
 6. Repeat a payment using Bank; source/customer balance changes but the
    physical cashbook is unaffected.
 7. Verify bill header and WhatsApp message branding.
