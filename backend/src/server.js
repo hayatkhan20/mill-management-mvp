@@ -27,6 +27,12 @@ const asNumber = (value, field, { min = 0, allowZero = true } = {}) => {
   if (!Number.isFinite(n) || n < min || (!allowZero && n === 0)) throw new Error(`${field} is invalid`);
   return n;
 };
+const paymentMethod = value => {
+  const method=String(value||'Cash').trim();
+  if (!['Cash','Bank'].includes(method)) throw new Error('Payment method must be Cash or Bank');
+  return method;
+};
+const validDate = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value||'')) && !Number.isNaN(Date.parse(value));
 const requiredText = (value, field) => {
   const text = String(value ?? '').trim();
   if (!text) throw new Error(`${field} is required`);
@@ -454,8 +460,8 @@ app.post('/api/payments', (req, res) => {
     if (!customer) throw new Error('Customer not found');
     const amount = asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false });
     const date = req.body.date || today();
-    const result = db.prepare('INSERT INTO payments (customer_id,date,amount,note) VALUES (?,?,?,?)')
-      .run(customerId, date, round2(amount), String(req.body.note ?? '').trim());
+    const result = db.prepare('INSERT INTO payments (customer_id,date,amount,note,payment_method) VALUES (?,?,?,?,?)')
+      .run(customerId, date, round2(amount), String(req.body.note ?? '').trim(),paymentMethod(req.body.payment_method));
     res.status(201).json({ id: result.lastInsertRowid, balance: customerBalance(customerId) });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -470,7 +476,7 @@ app.post('/api/payments/:id/update', (req,res)=>{
     const amount=round2(asNumber(req.body.amount,'Amount',{min:0,allowZero:false}));
     const date=req.body.date||existing.date;
     const note=String(req.body.note??'').trim();
-    db.prepare('UPDATE payments SET date=?,amount=?,note=? WHERE id=?').run(date,amount,note,id);
+    db.prepare('UPDATE payments SET date=?,amount=?,note=?,payment_method=? WHERE id=?').run(date,amount,note,paymentMethod(req.body.payment_method||existing.payment_method),id);
     res.json({id,balance:customerBalance(existing.customer_id)});
   }catch(e){res.status(400).json({error:e.message})}
 });
@@ -608,8 +614,8 @@ app.post('/api/source-payments', (req, res) => {
     if (!source) throw new Error('Source not found');
     const amount = asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false });
     const date = req.body.date || today();
-    const result = db.prepare('INSERT INTO source_payments (source_id,date,amount,note) VALUES (?,?,?,?)')
-      .run(sourceId, date, round2(amount), String(req.body.note ?? '').trim());
+    const result = db.prepare('INSERT INTO source_payments (source_id,date,amount,note,payment_method) VALUES (?,?,?,?,?)')
+      .run(sourceId, date, round2(amount), String(req.body.note ?? '').trim(),paymentMethod(req.body.payment_method));
     res.status(201).json({ id: result.lastInsertRowid, balance: sourceBalance(sourceId) });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -625,7 +631,7 @@ app.post('/api/source-payments/:id/update', (req,res)=>{
     const amount=round2(asNumber(req.body.amount,'Amount',{min:0,allowZero:false}));
     const date=req.body.date||existing.date;
     const note=String(req.body.note??'').trim();
-    db.prepare('UPDATE source_payments SET date=?,amount=?,note=? WHERE id=?').run(date,amount,note,id);
+    db.prepare('UPDATE source_payments SET date=?,amount=?,note=?,payment_method=? WHERE id=?').run(date,amount,note,paymentMethod(req.body.payment_method||existing.payment_method),id);
     res.json({id,balance:sourceBalance(existing.source_id)});
   }catch(e){res.status(400).json({error:e.message})}
 });
@@ -682,8 +688,8 @@ app.post('/api/wheat-in', (req, res) => {
       const purchaseId = result.lastInsertRowid;
 
       if (paidAmount > 0) {
-        db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id)
-          VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${purchaseId}`,'wheat_in',purchaseId);
+        db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id,payment_method)
+          VALUES (?,?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${purchaseId}`,'wheat_in',purchaseId,paymentMethod(req.body.payment_method));
       }
       return purchaseId;
     })();
@@ -738,8 +744,8 @@ app.post('/api/wheat-in/:id/update', (req, res) => {
       db.prepare('UPDATE wheat_receipts SET source_id=? WHERE purchase_id=?').run(sourceId,id);
 
       if(paidAmount>0) {
-        db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id)
-          VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${id}`,'wheat_in',id);
+        db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id,payment_method)
+          VALUES (?,?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Wheat Purchase #${id}`,'wheat_in',id,paymentMethod(req.body.payment_method));
       }
     })();
 
@@ -899,8 +905,8 @@ app.post('/api/bardana-purchases', (req, res) => {
       const id = result.lastInsertRowid;
       db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks)
         VALUES (?,?,?,?,?,?)`).run(date, quantity, 'IN', 'bardana_purchase', id, `Bardana purchased from ${source.name}`);
-      if (paidAmount > 0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id)
-        VALUES (?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Bardana Purchase #${id}`,'bardana_purchase',id);
+      if (paidAmount > 0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id,payment_method)
+        VALUES (?,?,?,?,?,?,?)`).run(sourceId,date,paidAmount,`Paid with Bardana Purchase #${id}`,'bardana_purchase',id,paymentMethod(req.body.payment_method));
       return id;
     });
     const id = tx();
@@ -935,8 +941,8 @@ app.post('/api/bardana-purchases/:id/update', (req,res)=>{
         .run(date,sourceId,quantity,rate,totalCost,paidAmount,remarks,id);
       db.prepare(`INSERT INTO bardana_movements (date,qty_bags,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?)`)
         .run(date,quantity,'IN','bardana_purchase',id,`Bardana purchased from ${source.name}`);
-      if(paidAmount>0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id) VALUES (?,?,?,?,?,?)`)
-        .run(sourceId,date,paidAmount,`Paid with Bardana Purchase #${id}`,'bardana_purchase',id);
+      if(paidAmount>0) db.prepare(`INSERT INTO source_payments (source_id,date,amount,note,reference_type,reference_id,payment_method) VALUES (?,?,?,?,?,?,?)`)
+        .run(sourceId,date,paidAmount,`Paid with Bardana Purchase #${id}`,'bardana_purchase',id,paymentMethod(req.body.payment_method));
     })();
     res.json({id,total_cost:totalCost,paid_amount:paidAmount,source_balance:sourceBalance(sourceId)});
   }catch(e){res.status(400).json({error:e.message})}
@@ -1282,8 +1288,8 @@ app.post('/api/sales', (req, res) => {
     const remarks=String(req.body.remarks??'').trim();
 
     const tx=db.transaction(()=>{
-      const r=db.prepare(`INSERT INTO sales (bill_no,date,customer_id,total_amount,received_amount,pending_amount,remarks) VALUES (?,?,?,?,?,?,?)`)
-        .run(billNo,date,customerId,totalAmount,received,pending,remarks);
+      const r=db.prepare(`INSERT INTO sales (bill_no,date,customer_id,total_amount,received_amount,pending_amount,remarks,payment_method) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(billNo,date,customerId,totalAmount,received,pending,remarks,paymentMethod(req.body.payment_method));
       const saleId=r.lastInsertRowid;
       const insertItem=db.prepare(`INSERT INTO sale_items (sale_id,product_id,bag_size,bags,total_kg,rate,amount) VALUES (?,?,?,?,?,?,?)`);
       const insertStock=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
@@ -1365,8 +1371,8 @@ app.post('/api/sales/:id/update', (req,res)=>{
       if(bardanaRequested>currentBardana+0.001) throw new Error('Bardana sale exceeds current stock');
 
       db.prepare('DELETE FROM sale_items WHERE sale_id=?').run(saleId);
-      db.prepare('UPDATE sales SET date=?,customer_id=?,total_amount=?,received_amount=?,pending_amount=?,remarks=? WHERE id=?')
-        .run(date,customerId,totalAmount,received,pending,remarks,saleId);
+      db.prepare('UPDATE sales SET date=?,customer_id=?,total_amount=?,received_amount=?,pending_amount=?,remarks=?,payment_method=? WHERE id=?')
+        .run(date,customerId,totalAmount,received,pending,remarks,paymentMethod(req.body.payment_method||existing.payment_method),saleId);
 
       const insertItem=db.prepare(`INSERT INTO sale_items (sale_id,product_id,bag_size,bags,total_kg,rate,amount) VALUES (?,?,?,?,?,?,?)`);
       const insertStock=db.prepare(`INSERT INTO stock_movements (date,product_id,qty_kg,movement_type,reference_type,reference_id,remarks) VALUES (?,?,?,?,?,?,?)`);
@@ -1538,7 +1544,7 @@ app.post('/api/employee-payments', (req,res)=>{
     const amount=round2(asNumber(req.body.amount,'Amount',{min:0,allowZero:false}));
     const date=req.body.date||today();
     const note=String(req.body.note??'').trim();
-    const r=db.prepare('INSERT INTO employee_payments (employee_id,date,amount,note) VALUES (?,?,?,?)').run(employeeId,date,amount,note);
+    const r=db.prepare('INSERT INTO employee_payments (employee_id,date,amount,note,payment_method) VALUES (?,?,?,?,?)').run(employeeId,date,amount,note,paymentMethod(req.body.payment_method));
     res.status(201).json({id:r.lastInsertRowid,balance:employeeBalance(employeeId)});
   }catch(e){res.status(400).json({error:e.message})}
 });
@@ -1807,8 +1813,8 @@ app.post('/api/expenses', (req, res) => {
     const category = requiredText(req.body.category, 'Expense category');
     const amount = round2(asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false }));
     const note = String(req.body.note ?? '').trim();
-    const result = db.prepare('INSERT INTO other_expenses (date,category,amount,note) VALUES (?,?,?,?)')
-      .run(date, category, amount, note);
+    const result = db.prepare('INSERT INTO other_expenses (date,category,amount,note,payment_method) VALUES (?,?,?,?,?)')
+      .run(date, category, amount, note,paymentMethod(req.body.payment_method));
     res.status(201).json(db.prepare('SELECT * FROM other_expenses WHERE id=?').get(result.lastInsertRowid));
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -1818,14 +1824,14 @@ app.post('/api/expenses', (req, res) => {
 app.post('/api/expenses/:id/update', (req, res) => {
   try {
     const id = asNumber(req.params.id, 'Expense', { min: 1, allowZero: false });
-    const existing = db.prepare('SELECT id FROM other_expenses WHERE id=?').get(id);
+    const existing = db.prepare('SELECT * FROM other_expenses WHERE id=?').get(id);
     if (!existing) return res.status(404).json({ error: 'Expense not found' });
     const date = req.body.date || today();
     const category = requiredText(req.body.category, 'Expense category');
     const amount = round2(asNumber(req.body.amount, 'Amount', { min: 0, allowZero: false }));
     const note = String(req.body.note ?? '').trim();
-    db.prepare('UPDATE other_expenses SET date=?,category=?,amount=?,note=? WHERE id=?')
-      .run(date, category, amount, note, id);
+    db.prepare('UPDATE other_expenses SET date=?,category=?,amount=?,note=?,payment_method=? WHERE id=?')
+      .run(date, category, amount, note,paymentMethod(req.body.payment_method||existing.payment_method),id);
     res.json(db.prepare('SELECT * FROM other_expenses WHERE id=?').get(id));
   } catch (e) {
     res.status(400).json({ error: e.message });
