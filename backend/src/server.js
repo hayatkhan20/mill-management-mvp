@@ -2058,6 +2058,50 @@ app.post('/api/roznamcha/adjustment/:id/update', (req,res)=>{
   }catch(e){res.status(400).json({error:e.message})}
 });
 
+
+/* Reset business records only after a verified database backup.
+   Product catalog, license, and version metadata survive this operation. */
+app.post('/api/data/reset', async (req,res)=>{
+  const origin=String(req.get('origin')||'');
+  const remote=String(req.socket.remoteAddress||'');
+  const local=/^(::1|127\.0\.0\.1|::ffff:127\.0\.0\.1)$/.test(remote);
+  if(!local || (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin))) {
+    return res.status(403).json({error:'Reset is allowed only from the local computer'});
+  }
+  if(req.body.confirmation!=='RESET ALL MILL DATA') {
+    return res.status(400).json({error:'Type RESET ALL MILL DATA to confirm'});
+  }
+
+  const backupDir=path.resolve(__dirname,'../../backups');
+  fs.mkdirSync(backupDir,{recursive:true});
+  const stamp=new Date().toISOString().replace(/[:.]/g,'-');
+  const backup=path.join(backupDir,`before-reset-\${stamp}.db`);
+  try {
+    await db.backup(backup);
+    const file=fs.statSync(backup);
+    if(file.size<=0) throw new Error('Backup was empty');
+  }catch(e){
+    return res.status(500).json({error:'Reset cancelled: database backup failed. '+e.message});
+  }
+  try{
+    db.transaction(()=>{
+      for(const table of [
+        'sale_items','sales','payments','source_payments','wheat_receipts',
+        'wheat_in','bardana_purchases','production_items','production',
+        'product_consumption','opening_product_stock','physical_stock_counts',
+        'stock_movements','bardana_movements','employee_salary_due',
+        'employee_payments','other_expenses','cash_entries','cash_opening',
+        'customers','sources','employees'
+      ]){
+        db.prepare(`DELETE FROM \${table}`).run();
+      }
+    })();
+    res.json({ok:true,backup_file:path.basename(backup),license_preserved:true,products_preserved:true});
+  }catch(e){
+    res.status(500).json({error:'Reset failed. A database backup was saved: '+path.basename(backup)+'. '+e.message});
+  }
+});
+
 app.get('/api/reports/outstanding', (_req, res) => {
   const rows = db.prepare(`
     SELECT c.id,c.name,c.phone,
