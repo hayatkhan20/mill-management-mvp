@@ -270,6 +270,24 @@ CREATE TABLE IF NOT EXISTS employee_payments (
 );
 
 
+CREATE TABLE IF NOT EXISTS cash_opening (
+  id INTEGER PRIMARY KEY CHECK(id=1),
+  date TEXT NOT NULL,
+  amount REAL NOT NULL CHECK(amount>=0)
+);
+
+CREATE TABLE IF NOT EXISTS cash_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  date TEXT NOT NULL,
+  direction TEXT NOT NULL CHECK(direction IN ('IN','OUT')),
+  person TEXT NOT NULL,
+  amount REAL NOT NULL CHECK(amount>0),
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_cash_entries_date ON cash_entries(date);
+
 CREATE INDEX IF NOT EXISTS idx_stock_date ON stock_movements(date);
 CREATE INDEX IF NOT EXISTS idx_stock_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_sales_customer ON sales(customer_id);
@@ -288,6 +306,15 @@ CREATE INDEX IF NOT EXISTS idx_employee_salary_due_employee ON employee_salary_d
 CREATE INDEX IF NOT EXISTS idx_employee_payments_employee ON employee_payments(employee_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_bardana_reference ON bardana_movements(reference_type, reference_id);
 `);
+
+// Older records predate payment-method tracking; they are treated as Cash.
+// New records can explicitly choose Bank, which is excluded from Roznamcha cash.
+for (const table of ['sales','payments','source_payments','employee_payments','other_expenses']) {
+  const cols=db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some(col=>col.name==='payment_method')) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN payment_method TEXT NOT NULL DEFAULT 'Cash'`);
+  }
+}
 
 // Small migrations for databases created by earlier MVP versions.
 const productColumns = db.prepare('PRAGMA table_info(products)').all();
