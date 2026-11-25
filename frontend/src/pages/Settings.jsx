@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import Products from './Products';
 import OpeningData from './OpeningData';
+import DataManagement from './DataManagement';
 import { Card } from '../components/Common';
 import { ExternalLink, Globe2, Linkedin, MessageCircle, Moon, Sun } from 'lucide-react';
 import { useUiPreferences } from '../context/UiPreferences';
@@ -20,6 +21,7 @@ export default function Settings(){
       <button className={tab==='preferences'?'primary':'secondary'} onClick={()=>setTab('preferences')}>{t('appearance','Appearance')}</button>
       <button className={tab==='products'?'primary':'secondary'} onClick={()=>setTab('products')}>{t('products','Products')}</button>
       <button className={tab==='opening'?'primary':'secondary'} onClick={()=>setTab('opening')}>{t('openingData','Opening Data')}</button>
+      <button className={tab==='data'?'primary':'secondary'} onClick={()=>setTab('data')}>Data Management</button>
       <button className={tab==='about'?'primary':'secondary'} onClick={()=>setTab('about')}>{t('about','About')}</button>
     </div>
 
@@ -46,6 +48,7 @@ export default function Settings(){
 
     {tab==='products'&&<Products/>}
     {tab==='opening'&&<OpeningData/>}
+    {tab==='data'&&<DataManagement/>}
 
     {tab==='about'&&<Card className="about-software-card">
       <div className="about-software">
