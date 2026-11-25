@@ -4,6 +4,7 @@ import { api } from '../api';
 import { Card, ErrorBox, PageHeader, SuccessBox } from '../components/Common';
 import { num, today } from '../utils';
 import DateField from '../components/DateField';
+import MoneyInput from '../components/MoneyInput';
 
 const totalKg=x=>(Number(x.bags_20||0)*20)+(Number(x.bags_40||0)*40)+Number(x.loose_kg||0);
 
@@ -54,7 +55,7 @@ export default function OpeningData(){
           <label>Date<DateField required value={customer.date} onChange={date=>setCustomer({...customer,date})}/></label>
           <label>Customer<select required value={customer.customer_id} onChange={e=>setCustomer({...customer,customer_id:e.target.value})}><option value="">Select customer</option>{customers.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
           <label>Balance Type<select value={customer.balance_type} onChange={e=>setCustomer({...customer,balance_type:e.target.value})}><option>Due</option><option>Advance</option></select></label>
-          <label>Amount<input required type="number" min="0" step="0.01" value={customer.amount} onChange={e=>setCustomer({...customer,amount:e.target.value})}/></label>
+          <label>Amount<MoneyInput required value={customer.amount} onChange={amount=>setCustomer({...customer,amount})}/></label>
           <div className="span-2"><button className="primary">Save Customer Balance</button></div>
         </form>
       </Card>
@@ -65,7 +66,7 @@ export default function OpeningData(){
           <label>Date<DateField required value={source.date} onChange={date=>setSource({...source,date})}/></label>
           <label>Source<select required value={source.source_id} onChange={e=>setSource({...source,source_id:e.target.value})}><option value="">Select source</option>{sources.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}</select></label>
           <label>Balance Type<select value={source.balance_type} onChange={e=>setSource({...source,balance_type:e.target.value})}><option>Payable</option><option>Advance</option></select></label>
-          <label>Amount<input required type="number" min="0" step="0.01" value={source.amount} onChange={e=>setSource({...source,amount:e.target.value})}/></label>
+          <label>Amount<MoneyInput required value={source.amount} onChange={amount=>setSource({...source,amount})}/></label>
           <div className="span-2"><button className="primary">Save Source Balance</button></div>
         </form>
       </Card>
@@ -76,7 +77,7 @@ export default function OpeningData(){
           <label>Date<DateField required value={employee.date} onChange={date=>setEmployee({...employee,date})}/></label>
           <label>Employee<select required value={employee.employee_id} onChange={e=>setEmployee({...employee,employee_id:e.target.value})}><option value="">Select employee</option>{employees.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
           <label>Balance Type<select value={employee.balance_type} onChange={e=>setEmployee({...employee,balance_type:e.target.value})}><option>Payable</option><option>Advance</option></select></label>
-          <label>Amount<input required type="number" min="0" step="0.01" value={employee.amount} onChange={e=>setEmployee({...employee,amount:e.target.value})}/></label>
+          <label>Amount<MoneyInput required value={employee.amount} onChange={amount=>setEmployee({...employee,amount})}/></label>
           <div className="span-2"><button className="primary">Save Employee Balance</button></div>
         </form>
       </Card>
